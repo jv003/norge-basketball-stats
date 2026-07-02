@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Norge Basketball — Team Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="wordmark">Norge<span>Basketball</span></div>
+    <div class="topbar-right">
+      <div class="switcher" id="teamSwitch">
+        <button class="active" data-team="u21">U21</button>
+        <button data-team="nt">National Team</button>
+      </div>
+    </div>
+    <svg class="flag" viewBox="0 0 24 18" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flag of Norway">
+      <rect width="24" height="18" fill="var(--red)"/>
+      <rect x="6" width="6" height="18" fill="#FFFFFF"/>
+      <rect y="6" width="24" height="6" fill="#FFFFFF"/>
+      <rect x="7.4" width="3.2" height="18" fill="var(--navy)"/>
+      <rect y="7.4" width="24" height="3.2" fill="var(--navy)"/>
+    </svg>
+  </div>
+
+  <div class="hero">
+    <div>
+      <div class="hero-team" id="heroTeam">Norway U21</div>
+      <div class="hero-sub" id="heroSub">Season standings — placeholder data</div>
+    </div>
+    <div class="record-block">
+      <div class="record-digits" id="recordDigits">
+        <span class="w">14</span><span class="sep">–</span><span class="l">6</span>
+      </div>
+      <div class="record-label">Win – Loss</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <select class="season-select" id="seasonSelect" aria-label="Season"></select>
+    <div class="switcher" id="modeSwitch">
+      <button data-mode="pergame" class="active">Per Game</button>
+      <button data-mode="totals">Totals</button>
+    </div>
+  </div>
+
+  <div class="grid" id="statGrid"></div>
+
+  <div class="table-card sched-card" id="schedCard">
+    <div class="card-tab"><div class="notch"></div><span id="schedTitle">Game Results</span></div>
+    <div class="table-scroll">
+      <table class="stats-table sched-table" id="schedTable"><thead><tr>
+        <th style="text-align:left;cursor:default">Date</th>
+        <th style="text-align:left;cursor:default">Opponent</th>
+        <th style="cursor:default">W/L</th><th style="cursor:default">Score</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <a class="alltime-link" id="alltimeLink" href="players.html" style="display:none">
+    All-Time player table — every player, sortable <span>→</span>
+  </a>
+
+  <div class="table-card">
+    <div class="card-tab"><div class="notch"></div><span id="tableTitle">Full Team Stats</span></div>
+    <div class="table-scroll">
+      <table class="stats-table" id="statsTable"><thead><tr></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <footer id="footer">Loading…</footer>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  const grid = document.getElementById('statGrid');
+  const heroTeam = document.getElementById('heroTeam');
+  const heroSub = document.getElementById('heroSub');
+  const recordDigits = document.getElementById('recordDigits');
+  const footer = document.getElementById('footer');
+  const seasonSelect = document.getElementById('seasonSelect');
+  const teamButtons = document.querySelectorAll('#teamSwitch button');
+  const modeButtons = document.querySelectorAll('#modeSwitch button');
+
+  let DATA = null;
+  const state = { team: 'u21', season: null, mode: 'pergame' };
+
+  function seasonLabel(s) { return s === 'all' ? 'All-Time' : 'Season ' + s; }
+
+  function fillSeasons() {
+    const t = DATA.teams[state.team];
+    if (!t.seasons.includes(state.season)) {
+      state.season = t.seasons[1] || t.seasons[0];   // latest season, else all-time
+    }
+    seasonSelect.innerHTML = t.seasons.map(s =>
+      `<option value="${s}"${s === state.season ? ' selected' : ''}>${seasonLabel(s)}</option>`
+    ).join('');
+  }
+
+  function render() {
+    const t = DATA.teams[state.team];
+    const d = t.data[state.season];
+    heroTeam.textContent = t.team;
+    heroSub.textContent = `${seasonLabel(state.season)} · ${d.games} games`;
+    recordDigits.innerHTML =
+      `<span class="w">${d.wins}</span><span class="sep">–</span><span class="l">${d.losses}</span>`;
+
+    const cats = d[state.mode];
+    grid.innerHTML = '';
+    Object.entries(cats).forEach(([label, players]) => {
+      const max = players.length ? Math.max(...players.map(p => p[1])) : 1;
+      const card = document.createElement('div');
+      card.className = 'card';
+      const rows = players.length ? players.map((p, i) => `
+            <div class="row">
+              <div class="rank">${i + 1}</div>
+              <div class="name name-click" data-p="${p[2] || ''}">${p[0]}</div>
+              <div class="val">${p[1]}</div>
+              <div class="bar" style="width:${(p[1] / max) * 100}%"></div>
+            </div>`).join('')
+        : '<div class="row"><div class="name">No qualifying players</div></div>';
+      card.innerHTML = `
+        <div class="card-tab"><div class="notch"></div><span>${label}</span></div>
+        <div class="card-list">${rows}</div>`;
+      grid.appendChild(card);
+    });
+    grid.querySelectorAll('.name-click').forEach(el =>
+      el.onclick = () => el.dataset.p && showPlayer(state.team, el.dataset.p));
+    renderTable();
+  }
+
+  // ---- full stats table ---- (F, tMetric come from shared.js)
+  const T_COLS = [
+    ['name','Player'], ['gp','GP'], ['min','MIN'], ['pts','PTS'], ['fg','FG'],
+    ['fgp','FG%'], ['efg','eFG%'], ['tp','3PT'], ['ft','FT'], ['ast','AST'],
+    ['past','pAST'], ['to','TO'], ['ato','A/TO'], ['reb','REB'],
+    ['stl','STL'], ['blk','BLK']];
+  let tSort = 'pts', tDir = -1;
+
+  function renderSchedule() {
+    const d = DATA.teams[state.team].data[state.season];
+    const sched = d.schedule || [];
+    document.getElementById('schedTitle').textContent =
+      `Game Results — ${seasonLabel(state.season)}`;
+    document.querySelector('#schedTable tbody').innerHTML = sched.map(g => `<tr>
+        <td>${g[0]}</td><td style="text-align:left">${g[1]}</td>
+        <td style="color:${g[2] === 'W' ? 'inherit' : 'var(--red)'};font-weight:600">${g[2]}</td>
+        <td>${g[3]}</td>
+      </tr>`).join('') || '<tr><td colspan="4">No games.</td></tr>';
+  }
+
+  function renderTable() {
+    const isAll = state.season === 'all';
+    document.getElementById('schedCard').style.display = isAll ? 'none' : '';
+    document.querySelector('.table-card:not(.sched-card)').style.display = isAll ? 'none' : '';
+    document.getElementById('alltimeLink').style.display = isAll ? '' : 'none';
+    if (isAll) return;
+    renderSchedule();
+    const t = DATA.teams[state.team];
+    const d = t.data[state.season];
+    const rows = (d.players || []).slice();
+    const pg = state.mode === 'pergame';
+    document.getElementById('tableTitle').textContent =
+      `Full Team Stats — ${seasonLabel(state.season)}${pg ? ' · per game' : ' · totals'}`;
+
+    rows.sort((a, b) => {
+      let av = tMetric(a, tSort), bv = tMetric(b, tSort);
+      if (pg && tSort !== 'name' && !['fgp','efg','ato'].includes(tSort)) {
+        av = a[F.gp] ? av/a[F.gp] : -1; bv = b[F.gp] ? bv/b[F.gp] : -1;
+      }
+      if (typeof av === 'string') return tDir * av.localeCompare(bv);
+      return tDir * (av - bv) || b[F.gp] - a[F.gp];
+    });
+
+    document.querySelector('#statsTable thead tr').innerHTML = T_COLS.map(([k, l]) =>
+      `<th data-k="${k}" class="${k === tSort ? 'sorted' : ''}">${l}${
+        k === tSort ? (tDir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
+
+    const pct = x => x < 0 ? '—' : (100*x).toFixed(1);
+    const n1 = x => x.toFixed(1);
+    document.querySelector('#statsTable tbody').innerHTML = rows.map(r => {
+      const gp = r[F.gp] || 1;
+      const s = pg ? (x => n1(x / gp)) : (x => Math.round(x));
+      const pts = 2*r[F.fgm] + r[F.tpm] + r[F.ftm];
+      const ato = r[F.to] ? (r[F.ast]/r[F.to]).toFixed(1) : (r[F.ast] ? '∞' : '—');
+      return `<tr>
+        <td class="name-click" data-p="${r[F.name]}">${r[F.name]}</td><td>${r[F.gp]}</td>
+        <td>${pg ? n1(r[F.min]/gp) : Math.round(r[F.min])}</td>
+        <td>${s(pts)}</td>
+        <td>${s(r[F.fgm])}/${s(r[F.fga])}</td>
+        <td>${pct(tMetric(r,'fgp'))}</td><td>${pct(tMetric(r,'efg'))}</td>
+        <td>${s(r[F.tpm])}/${s(r[F.tpa])}</td>
+        <td>${s(r[F.ftm])}/${s(r[F.fta])}</td>
+        <td>${s(r[F.ast])}</td><td>${s(r[F.past])}</td><td>${s(r[F.to])}</td>
+        <td>${ato}</td>
+        <td>${s(r[F.reb])}</td><td>${s(r[F.stl])}</td><td>${s(r[F.blk])}</td>
+      </tr>`;
+    }).join('');
+
+    document.querySelectorAll('#statsTable th').forEach(th => th.onclick = () => {
+      const k = th.dataset.k;
+      if (tSort === k) tDir = -tDir;
+      else { tSort = k; tDir = k === 'name' ? 1 : -1; }
+      renderTable();
+    });
+    document.querySelectorAll('#statsTable td.name-click').forEach(td =>
+      td.onclick = () => showPlayer(state.team, td.dataset.p));
+  }
+
+  teamButtons.forEach(btn => btn.addEventListener('click', () => {
+    teamButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.team = btn.dataset.team;
+    fillSeasons();
+    render();
+  }));
+
+  modeButtons.forEach(btn => btn.addEventListener('click', () => {
+    modeButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    render();
+  }));
+
+  seasonSelect.addEventListener('change', () => {
+    state.season = seasonSelect.value;
+    render();
+  });
+
+  fetch('data.json')
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(j => {
+      DATA = j;
+      fillSeasons();
+      render();
+      footer.textContent =
+        `Updated ${j.generated} · BuzzerBeater play-by-play data · per-game boards: min 8 GP all-time, ⅓ of games in-season`;
+    })
+    .catch(e => {
+      footer.textContent = 'Could not load data.json — if opened as a local file, serve over HTTP.';
+    });
+</script>
+</body>
+</html>

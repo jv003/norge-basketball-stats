@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Norge Basketball — All-Time Player Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <a class="wordmark" href="index.html" style="text-decoration:none">Norge<span>Basketball</span></a>
+    <div class="topbar-right">
+      <div class="switcher" id="teamSwitch">
+        <button class="active" data-team="u21">U21</button>
+        <button data-team="nt">National Team</button>
+      </div>
+    </div>
+    <svg class="flag" viewBox="0 0 24 18" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flag of Norway">
+      <rect width="24" height="18" fill="var(--red)"/>
+      <rect x="6" width="6" height="18" fill="#FFFFFF"/>
+      <rect y="6" width="24" height="6" fill="#FFFFFF"/>
+      <rect x="7.4" width="3.2" height="18" fill="var(--navy)"/>
+      <rect y="7.4" width="24" height="3.2" fill="var(--navy)"/>
+    </svg>
+  </div>
+
+  <div class="hero">
+    <div>
+      <div class="hero-team" id="heroTeam">All-Time Player Stats</div>
+      <div class="hero-sub" id="heroSub">Every player, every ingested season</div>
+    </div>
+    <div class="record-block">
+      <div class="switcher" id="modeSwitch">
+        <button data-mode="totals" class="active">Totals</button>
+        <button data-mode="pergame">Per Game</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card" style="margin-top:0">
+    <div class="card-tab"><div class="notch"></div><span id="tableTitle">All-Time Stats</span></div>
+    <div class="table-scroll">
+      <table class="stats-table" id="statsTable"><thead><tr></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <footer id="footer">Loading…</footer>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  const footer = document.getElementById('footer');
+  const heroSub = document.getElementById('heroSub');
+  const teamButtons = document.querySelectorAll('#teamSwitch button');
+  const modeButtons = document.querySelectorAll('#modeSwitch button');
+
+  let DATA = null;
+  const state = { team: 'u21', mode: 'totals' };
+  const T_COLS = [
+    ['name','Player'], ['gp','GP'], ['min','MIN'], ['pts','PTS'], ['fg','FG'],
+    ['fgp','FG%'], ['efg','eFG%'], ['tp','3PT'], ['ft','FT'], ['ast','AST'],
+    ['past','pAST'], ['to','TO'], ['ato','A/TO'], ['reb','REB'],
+    ['stl','STL'], ['blk','BLK']];
+  let tSort = 'pts', tDir = -1;
+
+  function render() {
+    const t = DATA.teams[state.team];
+    const rows = (t.data.all.players || []).slice();
+    const pg = state.mode === 'pergame';
+    document.getElementById('tableTitle').textContent =
+      `All-Time Stats — ${t.team}${pg ? ' · per game' : ' · totals'}`;
+    heroSub.textContent =
+      `${t.team} · ${rows.length} players · seasons ${t.seasons[t.seasons.length-1]}–${t.seasons[1]}`;
+
+    rows.sort((a, b) => {
+      let av = tMetric(a, tSort), bv = tMetric(b, tSort);
+      if (pg && tSort !== 'name' && !['fgp','efg','ato'].includes(tSort)) {
+        av = a[F.gp] ? av/a[F.gp] : -1; bv = b[F.gp] ? bv/b[F.gp] : -1;
+      }
+      if (typeof av === 'string') return tDir * av.localeCompare(bv);
+      return tDir * (av - bv) || b[F.gp] - a[F.gp];
+    });
+
+    document.querySelector('#statsTable thead tr').innerHTML = T_COLS.map(([k, l]) =>
+      `<th data-k="${k}" class="${k === tSort ? 'sorted' : ''}">${l}${
+        k === tSort ? (tDir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
+
+    document.querySelector('#statsTable tbody').innerHTML = rows.map(r =>
+      `<tr><td class="name-click" data-p="${r[F.name]}">${r[F.name]}</td>${
+        statCells(r, pg)}</tr>`).join('');
+
+    document.querySelectorAll('#statsTable th').forEach(th => th.onclick = () => {
+      const k = th.dataset.k;
+      if (tSort === k) tDir = -tDir;
+      else { tSort = k; tDir = k === 'name' ? 1 : -1; }
+      render();
+    });
+    document.querySelectorAll('#statsTable td.name-click').forEach(td =>
+      td.onclick = () => showPlayer(state.team, td.dataset.p));
+  }
+
+  teamButtons.forEach(btn => btn.addEventListener('click', () => {
+    teamButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.team = btn.dataset.team;
+    render();
+  }));
+  modeButtons.forEach(btn => btn.addEventListener('click', () => {
+    modeButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    render();
+  }));
+
+  fetch('data.json')
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(j => {
+      DATA = j;
+      render();
+      footer.innerHTML =
+        `Updated ${j.generated} · <a href="index.html" style="color:inherit">← back to leaderboards</a>`;
+    })
+    .catch(() => {
+      footer.textContent = 'Could not load data.json — if opened as a local file, serve over HTTP.';
+    });
+</script>
+</body>
+</html>
