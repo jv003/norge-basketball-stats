@@ -35,7 +35,13 @@
       <div class="hero-team" id="heroTeam">All-Time Player Stats</div>
       <div class="hero-sub" id="heroSub">Every player, every ingested season</div>
     </div>
-    <div class="record-block">
+    <div class="record-block" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="switcher" id="viewSwitch">
+        <button data-view="stats" class="active">Stats</button>
+        <button data-view="core">Core</button>
+        <button data-view="def">Defense</button>
+      </div>
+      <select id="seasonSel" class="switcher" style="padding:6px 10px"></select>
       <div class="switcher" id="modeSwitch">
         <button data-mode="totals" class="active">Totals</button>
         <button data-mode="pergame">Per Game</button>
@@ -61,7 +67,9 @@
   const modeButtons = document.querySelectorAll('#modeSwitch button');
 
   let DATA = null;
-  const state = { team: 'u21', mode: 'totals' };
+  const viewButtons = document.querySelectorAll('#viewSwitch button');
+  const seasonSel = document.getElementById('seasonSel');
+  const state = { team: 'u21', mode: 'totals', view: 'stats', season: 'all' };
   const T_COLS = [
     ['name','Player'], ['gp','GP'], ['min','MIN'], ['pts','PTS'], ['fg','FG'],
     ['fgp','FG%'], ['efg','eFG%'], ['tp','3PT'], ['ft','FT'], ['ast','AST'],
@@ -69,14 +77,67 @@
     ['stl','STL'], ['blk','BLK']];
   let tSort = 'pts', tDir = -1;
 
-  function render() {
+  // per-table docs, fetched lazily and cached: players_/core_/defense_{team}.
+  // Core/Defense docs arrive AES-GCM encrypted — passphrase prompted once
+  // per session (sessionStorage), key derived via WebCrypto PBKDF2.
+  const _tblCache = {};
+  const b64b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function decryptDoc(env) {
+    for (;;) {
+      let pw = sessionStorage.getItem('norgePw');
+      if (!pw) {
+        pw = prompt('This table is passphrase-protected.\nEnter passphrase:');
+        if (pw == null) throw new Error('locked');
+        sessionStorage.setItem('norgePw', pw);
+      }
+      try {
+        const mat = await crypto.subtle.importKey('raw',
+          new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+        const key = await crypto.subtle.deriveKey(
+          {name:'PBKDF2', salt:b64b(env.salt), iterations:env.iter, hash:'SHA-256'},
+          mat, {name:'AES-GCM', length:256}, false, ['decrypt']);
+        const pt = await crypto.subtle.decrypt(
+          {name:'AES-GCM', iv:b64b(env.iv)}, key, b64b(env.ct));
+        return JSON.parse(new TextDecoder().decode(pt));
+      } catch (e) {
+        sessionStorage.removeItem('norgePw');   // wrong passphrase — re-ask
+        if (e.message === 'locked') throw e;
+      }
+    }
+  }
+  async function getTable(name, team) {
+    const key = `${name}_${team}`;
+    if (!_tblCache[key])
+      _tblCache[key] = fetch(`${key}.json`)
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(j => j.ct ? decryptDoc(j) : j)
+        .catch(e => { delete _tblCache[key]; throw e; });
+    return _tblCache[key];
+  }
+
+  function seasonLabel() {
+    return state.season === 'all' ? 'All-Time' : `Season ${state.season}`;
+  }
+
+  function fillSeasons(seasons) {
+    const cur = state.season;
+    seasonSel.innerHTML = seasons.map(s =>
+      `<option value="${s}">${s === 'all' ? 'All-time' : 'Season ' + s}</option>`).join('');
+    seasonSel.value = seasons.includes(cur) ? cur : 'all';
+    state.season = seasonSel.value;
+  }
+
+  // ── Stats view (players_{team}.json) ──
+  async function renderStats() {
     const t = DATA.teams[state.team];
-    const rows = (t.data.all.players || []).slice();
+    const doc = await getTable('players', state.team);
+    fillSeasons(doc.seasons);
+    const rows = (doc.data[state.season] || []).slice();
     const pg = state.mode === 'pergame';
     document.getElementById('tableTitle').textContent =
-      `All-Time Stats — ${t.team}${pg ? ' · per game' : ' · totals'}`;
+      `${seasonLabel()} Stats — ${t.team}${pg ? ' · per game' : ' · totals'}`;
     heroSub.textContent =
-      `${t.team} · ${rows.length} players · seasons ${t.seasons[t.seasons.length-1]}–${t.seasons[1]}`;
+      `${t.team} · ${rows.length} players · all games`;
 
     rows.sort((a, b) => {
       let av = tMetric(a, tSort), bv = tMetric(b, tSort);
@@ -93,16 +154,108 @@
 
     document.querySelector('#statsTable tbody').innerHTML = rows.map(r =>
       `<tr><td class="name-click" data-p="${r[F.name]}">${r[F.name]}</td>${
-        statCells(r, pg)}</tr>`).join('');
+        statCells(r, pg)}</tr>`).join('') ||
+      '<tr><td colspan="16">No data for this season.</td></tr>';
 
-    document.querySelectorAll('#statsTable th').forEach(th => th.onclick = () => {
-      const k = th.dataset.k;
-      if (tSort === k) tDir = -tDir;
-      else { tSort = k; tDir = k === 'name' ? 1 : -1; }
-      render();
-    });
     document.querySelectorAll('#statsTable td.name-click').forEach(td =>
       td.onclick = () => showPlayer(state.team, td.dataset.p));
+    wireSort(k => { tSort = k; }, () => tSort, d => { tDir = d; }, () => tDir);
+  }
+
+  // ── Core view (core_{team}.json — advanced on-floor, competitive only) ──
+  const C_COLS = ['Player','GP','MIN','PG%','SG%','SF%','PF%','C%','+/- On',
+    'On-Off','ORB%','DRB%','TRB%','AST%','USG%','TOV%','STL%','BLK%','TS%',
+    'FTr','3PAr'];
+  let cSort = 2, cDir = -1;
+  async function renderCore() {
+    const t = DATA.teams[state.team];
+    const doc = await getTable('core', state.team);
+    fillSeasons(doc.seasons);
+    const rows = (doc.data[state.season] || []).slice();
+    document.getElementById('tableTitle').textContent =
+      `${seasonLabel()} Advanced — ${t.team} · competitive NT games only`;
+    heroSub.textContent = `${t.team} · on-floor rates (friendlies excluded)`;
+    rows.sort((a, b) => cSort === 0
+      ? cDir * String(a[0]).localeCompare(b[0])
+      : cDir * ((a[cSort] ?? -1e9) - (b[cSort] ?? -1e9)));
+    document.querySelector('#statsTable thead tr').innerHTML = C_COLS.map((l, i) =>
+      `<th data-k="${i}" class="${i === cSort ? 'sorted' : ''}">${l}${
+        i === cSort ? (cDir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
+    const f = x => x == null ? '—' : x;
+    const sgn = x => x == null ? '—' : (x > 0 ? '+' : '') + x;
+    document.querySelector('#statsTable tbody').innerHTML = rows.map(r =>
+      `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td>` +
+      r.slice(3, 8).map(x => `<td>${x == null || x === 0 ? '—' : x + '%'}</td>`).join('') +
+      `<td><b>${sgn(r[8])}</b></td><td><b>${sgn(r[9])}</b></td>` +
+      r.slice(10, 19).map(x => `<td>${f(x)}</td>`).join('') +
+      `<td>${f(r[19])}</td><td>${f(r[20])}</td></tr>`).join('') ||
+      '<tr><td colspan="21">No competitive-game data for this season.</td></tr>';
+    wireSort(k => { cSort = +k; }, () => cSort, d => { cDir = d; }, () => cDir);
+  }
+
+  // ── Defense view (defense_{team}.json — xDFG + grades, competitive) ──
+  const D_COLS = ['Player','Grade','Rim','Per','Contested',
+    'INS Ct','INS DFG%','INS xDFG%','INS Imp',
+    'MID Ct','MID DFG%','MID xDFG%','MID Imp',
+    '3PT Ct','3PT DFG%','3PT xDFG%','3PT Imp'];
+  const GRADE_RANK = {'F':1,'D-':2,'D':3,'D+':4,'C-':5,'C':6,'C+':7,
+    'B-':8,'B':9,'B+':10,'A-':11,'A':12,'A+':13};
+  let dSort = 4, dDir = -1;
+  async function renderDef() {
+    const t = DATA.teams[state.team];
+    const doc = await getTable('defense', state.team);
+    fillSeasons(doc.seasons);
+    const rows = (doc.data[state.season] || []).slice();
+    document.getElementById('tableTitle').textContent =
+      `${seasonLabel()} Defense — ${t.team} · competitive NT games only`;
+    heroSub.textContent = `${t.team} · shooters vs their own baselines; ` +
+      `grades ranked within the ${state.team === 'u21' ? 'U21' : 'NT'} pool` +
+      (state.season === 'all' ? ' (latest-season grade shown)' : '');
+    const val = (r, k) => k <= 3
+      ? (k === 0 ? r[0] : (GRADE_RANK[r[k]] ?? -1)) : (r[k] ?? -1e9);
+    rows.sort((a, b) => dSort === 0
+      ? dDir * String(a[0]).localeCompare(b[0])
+      : dDir * (val(a, dSort) - val(b, dSort)));
+    document.querySelector('#statsTable thead tr').innerHTML = D_COLS.map((l, i) =>
+      `<th data-k="${i}" class="${i === dSort ? 'sorted' : ''}">${l}${
+        i === dSort ? (dDir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
+    const gcell = g => g == null ? '<td>—</td>' :
+      `<td style="font-weight:700;color:${(GRADE_RANK[g]||0) >= 11
+        ? '#1a7f37' : (GRADE_RANK[g]||0) <= 3 ? 'var(--red)' : 'inherit'}">${g}</td>`;
+    const icell = x => x == null ? '<td>—</td>' :
+      `<td style="font-weight:600;color:${x <= -3 ? '#1a7f37' : x >= 3
+        ? 'var(--red)' : 'inherit'}">${x > 0 ? '+' : ''}${x}</td>`;
+    document.querySelector('#statsTable tbody').innerHTML = rows.map(r => {
+      let h = `<tr><td>${r[0]}</td>${gcell(r[1])}${gcell(r[2])}${gcell(r[3])}<td>${r[4]}</td>`;
+      for (let z = 0; z < 3; z++) {
+        const o = 5 + z * 4;
+        h += `<td>${r[o]}</td><td>${r[o+1] ?? '—'}</td><td>${r[o+2] ?? '—'}</td>${icell(r[o+3])}`;
+      }
+      return h + '</tr>';
+    }).join('') ||
+      '<tr><td colspan="17">No competitive-game defensive data for this season.</td></tr>';
+    wireSort(k => { dSort = +k; }, () => dSort, d => { dDir = d; }, () => dDir);
+  }
+
+  function wireSort(setKey, getKey, setDir, getDir) {
+    document.querySelectorAll('#statsTable th').forEach(th => th.onclick = () => {
+      const k = th.dataset.k;
+      if (String(getKey()) === String(k)) setDir(-getDir());
+      else { setKey(k); setDir(k === 'name' || k === '0' ? 1 : -1); }
+      render();
+    });
+  }
+
+  function render() {
+    document.getElementById('modeSwitch').style.display =
+      state.view === 'stats' ? '' : 'none';
+    const go = { stats: renderStats, core: renderCore, def: renderDef }[state.view]();
+    go.catch(e => {
+      document.querySelector('#statsTable tbody').innerHTML =
+        e.message === 'locked'
+        ? '<tr><td colspan="17">Passphrase required — switch views or reload to try again.</td></tr>'
+        : `<tr><td colspan="17">Could not load ${state.view} data (${e.message}) — regenerate with export_norge_stats.py.</td></tr>`;
+    });
   }
 
   teamButtons.forEach(btn => btn.addEventListener('click', () => {
@@ -117,6 +270,16 @@
     state.mode = btn.dataset.mode;
     render();
   }));
+  viewButtons.forEach(btn => btn.addEventListener('click', () => {
+    viewButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.view = btn.dataset.view;
+    render();
+  }));
+  seasonSel.addEventListener('change', () => {
+    state.season = seasonSel.value;
+    render();
+  });
 
   fetch('data.json')
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
