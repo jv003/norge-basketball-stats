@@ -88,7 +88,7 @@
 
   function fillSeasons(seasons) {
     const cur = state.season;
-    seasonSel.innerHTML = seasons.map(s =>
+    seasonSel.innerHTML = seasons.filter(s => s === 'all' || +s >= 60).map(s =>
       `<option value="${s}">${s === 'all' ? 'All-time' : 'Season ' + s}</option>`).join('');
     seasonSel.value = seasons.includes(cur) ? cur : 'all';
     state.season = seasonSel.value;

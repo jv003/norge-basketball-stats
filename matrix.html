@@ -58,7 +58,7 @@
         <option value="pace">Pace (poss/game)</option>
       </select>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
-        <label class="pill-check" style="padding:6px 14px"><input type="checkbox" id="allSeasons" checked> All seasons</label>
+        <label class="pill-check" style="padding:6px 14px"><input type="checkbox" id="allSeasons" checked> All seasons (S60+)</label>
         <div class="season-pills" id="seasonPills"></div>
       </div>
     </div>
@@ -130,7 +130,7 @@
 
   function fillSeasonPills() {
     const box = document.getElementById('seasonPills');
-    box.innerHTML = DOC.seasons.map(s =>
+    box.innerHTML = DOC.seasons.filter(s => s >= 60).map(s =>
       `<span class="pill-check${state.seasons && state.seasons.has(s) ? ' on' : ''}"
         data-s="${s}">S${s}</span>`).join('');
     box.style.opacity = allSeasons.checked ? 0.35 : 1;
@@ -158,6 +158,10 @@
     const cells = {}, offT = {}, defT = {};
     for (const r of DOC.rows) {
       const o = {}; K.forEach((k, i) => o[k] = r[i]);
+      // hard floor S60: pre-S60 archive is Norge/USA-only (selection
+      // bias) AND predates the ~S60 tactics update (different era) —
+      // excluded from ALL cuts including "All seasons".
+      if (o.season < 60) continue;
       if (o.comp !== comp) continue;
       if (state.seasons && !state.seasons.has(o.season)) continue;
       if (regionFilter && regionFilter !== 'all' && o.region !== regionFilter)
