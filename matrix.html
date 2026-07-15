@@ -9,6 +9,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<style>
+  .season-pills {
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;
+    max-width: 420px;
+  }
+  .season-pills .pill-check { padding: 5px 12px; font-size: 12px; }
+  .season-pills .pill-check.on {
+    background: var(--red); color: white; border-color: var(--red);
+  }
+  .region-pills { display: inline-flex; gap: 6px; margin-left: 14px; }
+</style>
 </head>
 <body class="wide">
 <div class="wrap">
@@ -33,9 +44,9 @@
   <div class="hero">
     <div>
       <div class="hero-team">Tactic Analysis</div>
-      <div class="hero-sub" id="heroSub">Strategy matchups across the whole pool — offenses across, defenses down</div>
+      <div class="hero-sub" id="heroSub">Offense × defense by competition level · offenses across, defenses down</div>
     </div>
-    <div class="record-block" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+    <div class="record-block" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
       <select id="metricSel" class="season-select">
         <option value="ppp" selected>PPP — points per possession</option>
         <option value="pps">PPS — points per shot</option>
@@ -46,24 +57,41 @@
         <option value="blkg">Blocks /game</option>
         <option value="pace">Pace (poss/game)</option>
       </select>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-        <select id="seasonMulti" class="season-multi" multiple size="5"></select>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
         <label class="pill-check" style="padding:6px 14px"><input type="checkbox" id="allSeasons" checked> All seasons</label>
+        <div class="season-pills" id="seasonPills"></div>
       </div>
     </div>
   </div>
 
   <div class="table-card" style="margin-top:0">
-    <div class="card-tab"><div class="notch"></div><span>Competitive — round robin + tournament</span></div>
+    <div class="card-tab"><div class="notch"></div><span>World Cup — finals + qualification playoffs</span></div>
     <div class="table-scroll">
-      <table class="stats-table matrix-table" id="matC"><thead><tr></tr></thead><tbody></tbody></table>
+      <table class="stats-table matrix-table" id="matWC"><thead><tr></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="card-tab"><div class="notch"></div><span>Consolidation tournament</span></div>
+    <div class="table-scroll">
+      <table class="stats-table matrix-table" id="matCO"><thead><tr></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="card-tab"><div class="notch"></div>
+      <span>Regional qualifiers</span>
+      <span class="region-pills" id="regionPills"></span>
+    </div>
+    <div class="table-scroll">
+      <table class="stats-table matrix-table" id="matRE"><thead><tr></tr></thead><tbody></tbody></table>
     </div>
   </div>
 
   <div class="table-card">
     <div class="card-tab"><div class="notch"></div><span>Friendlies</span></div>
     <div class="table-scroll">
-      <table class="stats-table matrix-table" id="matF"><thead><tr></tr></thead><tbody></tbody></table>
+      <table class="stats-table matrix-table" id="matFR"><thead><tr></tr></thead><tbody></tbody></table>
     </div>
   </div>
 
@@ -72,43 +100,68 @@
 
 <script src="shared.js"></script>
 <script>
-  const state = { pool: 'u21', metric: 'ppp' };
+  const state = { pool: 'u21', metric: 'ppp', region: 'all', seasons: null };
   const footer = document.getElementById('footer');
-  const seasonMulti = document.getElementById('seasonMulti');
   const allSeasons = document.getElementById('allSeasons');
+  const NAMES = {
+    ManToMan: 'Man-to-Man', '32Zone': '3-2 Zone', '23Zone': '2-3 Zone',
+    OutsideBoxAndOne: 'Outside Box+1', InsideBoxAndOne: 'Inside Box+1',
+    Press: 'Full Court Press', '131Zone': '1-3-1 Zone',
+    LookInside: 'Look Inside', Motion: 'Motion', Push: 'Push the Ball',
+    RunAndGun: 'Run and Gun', Patient: 'Patient',
+    InsideIsolation: 'Inside ISO', OutsideIsolation: 'Outside ISO',
+    Base: 'Base Offense', Princeton: 'Princeton', LowPost: 'Low Post',
+  };
+  const label = s => NAMES[s] || s;
+  const REGIONS = [['all','All'], ['europe','Europe'], ['americas','Americas'],
+                   ['asia','Asia/Oceania'], ['africa','Africa']];
   const METRIC = {
-    ppp:  {label: 'PPP',   f: c => c.pts / c.poss,           d: 2},
-    pps:  {label: 'PPS',   f: c => c.spts / c.att,           d: 2},
-    efg:  {label: 'eFG%',  f: c => 100 * (c.fgm + 0.5 * c.tpm) / c.fgab, d: 1},
-    orbp: {label: 'ORB%',  f: c => 100 * c.orb / (c.orb + c.oppdrb),     d: 1},
-    tovp: {label: 'TOV%',  f: c => 100 * c.to / c.poss,      d: 1},
-    stlg: {label: 'STL/g', f: c => c.stl / c.games,          d: 1},
-    blkg: {label: 'BLK/g', f: c => c.blk / c.games,          d: 1},
-    pace: {label: 'Pace',  f: c => c.poss / c.games,         d: 1},
+    ppp:  {f: c => c.pts / c.poss,                           d: 2},
+    pps:  {f: c => c.spts / c.att,                           d: 2},
+    efg:  {f: c => 100 * (c.fgm + 0.5 * c.tpm) / c.fgab,     d: 1},
+    orbp: {f: c => 100 * c.orb / (c.orb + c.oppdrb),         d: 1},
+    tovp: {f: c => 100 * c.to / c.poss,                      d: 1},
+    stlg: {f: c => c.stl / c.games,                          d: 1},
+    blkg: {f: c => c.blk / c.games,                          d: 1},
+    pace: {f: c => c.poss / c.games,                         d: 1},
   };
 
   let DOC = null, K = null;
 
-  function selectedSeasons() {
-    if (allSeasons.checked) return null;                    // all
-    const set = new Set([...seasonMulti.selectedOptions].map(o => +o.value));
-    return set.size ? set : null;
+  function fillSeasonPills() {
+    const box = document.getElementById('seasonPills');
+    box.innerHTML = DOC.seasons.map(s =>
+      `<span class="pill-check${state.seasons && state.seasons.has(s) ? ' on' : ''}"
+        data-s="${s}">S${s}</span>`).join('');
+    box.style.opacity = allSeasons.checked ? 0.35 : 1;
+    box.querySelectorAll('.pill-check').forEach(p => p.onclick = () => {
+      if (allSeasons.checked) { allSeasons.checked = false; state.seasons = new Set(); }
+      const s = +p.dataset.s;
+      if (!state.seasons) state.seasons = new Set();
+      state.seasons.has(s) ? state.seasons.delete(s) : state.seasons.add(s);
+      if (!state.seasons.size) { allSeasons.checked = true; state.seasons = null; }
+      render();
+    });
   }
 
-  function fillSeasons() {
-    seasonMulti.innerHTML = DOC.seasons.map(s =>
-      `<option value="${s}">S${s}</option>`).join('');
-    seasonMulti.disabled = allSeasons.checked;
+  function fillRegionPills() {
+    const box = document.getElementById('regionPills');
+    box.innerHTML = REGIONS.map(([k, l]) =>
+      `<span class="pill-check${state.region === k ? ' on' : ''}" data-r="${k}"
+        style="padding:4px 10px;font-size:11px">${l}</span>`).join('');
+    box.querySelectorAll('.pill-check').forEach(p => p.onclick = () => {
+      state.region = p.dataset.r; render();
+    });
   }
 
-  function buildMatrix(tg) {
-    const seasons = selectedSeasons();
-    const cells = {};                     // off||def -> sums
-    const offT = {}, defT = {};
+  function buildMatrix(comp, regionFilter) {
+    const cells = {}, offT = {}, defT = {};
     for (const r of DOC.rows) {
       const o = {}; K.forEach((k, i) => o[k] = r[i]);
-      if (o.tg !== tg) continue;
-      if (seasons && !seasons.has(o.season)) continue;
+      if (o.comp !== comp) continue;
+      if (state.seasons && !state.seasons.has(o.season)) continue;
+      if (regionFilter && regionFilter !== 'all' && o.region !== regionFilter)
+        continue;
       for (const [store, key] of [[cells, o.off + '||' + o.def],
                                   [offT, o.off], [defT, o.def], [cells, '||']]) {
         const c = store[key] ??= {games:0,pts:0,poss:0,att:0,spts:0,fgm:0,
@@ -119,8 +172,8 @@
     return {cells, offT, defT};
   }
 
-  function renderOne(tableId, tg) {
-    const {cells, offT, defT} = buildMatrix(tg);
+  function renderOne(tableId, comp, regionFilter) {
+    const {cells, offT, defT} = buildMatrix(comp, regionFilter);
     const m = METRIC[state.metric];
     const offs = Object.keys(offT).sort((a, b) => offT[b].games - offT[a].games);
     const defs = Object.keys(defT).sort((a, b) => defT[b].games - defT[a].games);
@@ -134,13 +187,17 @@
     const fmt = c => (c && c.games && c.poss > 0)
       ? `${m.f(c).toFixed(m.d)}<span class="n">(${c.games})</span>`
       : '<span style="opacity:.35">—</span>';
-    head.innerHTML = `<th style="text-align:left">Def \\ Off</th>` +
-      offs.map(o => `<th>${o}</th>`).join('') + `<th class="tot">All off.</th>`;
+    // columns = offenses; the right-most column totals each DEFENSE row
+    // across all offenses; the bottom row totals each OFFENSE column
+    // across all defenses.
+    head.innerHTML = `<th style="text-align:left">Defense \\ Offense</th>` +
+      offs.map(o => `<th>${label(o)}</th>`).join('') +
+      `<th class="tot">Def total</th>`;
     body.innerHTML = defs.map(d =>
-      `<tr><td style="text-align:left;font-weight:600">${d}</td>` +
+      `<tr><td style="text-align:left;font-weight:600">${label(d)}</td>` +
       offs.map(o => `<td>${fmt(cells[o + '||' + d])}</td>`).join('') +
       `<td class="tot">${fmt(defT[d])}</td></tr>`).join('') +
-      `<tr class="tot"><td style="text-align:left">All def.</td>` +
+      `<tr class="tot"><td style="text-align:left">Off total</td>` +
       offs.map(o => `<td>${fmt(offT[o])}</td>`).join('') +
       `<td class="tot">${fmt(cells['||'])}</td></tr>`;
   }
@@ -149,12 +206,15 @@
     try {
       DOC = await getTable('matrix', state.pool);
       K = DOC.keys;
-      fillSeasons();
-      renderOne('matC', 'ntc');
-      renderOne('matF', 'ntf');
+      fillSeasonPills();
+      fillRegionPills();
+      renderOne('matWC', 'wc');
+      renderOne('matCO', 'consol');
+      renderOne('matRE', 'regional', state.region);
+      renderOne('matFR', 'friendly');
       document.getElementById('heroSub').textContent =
         `${state.pool === 'u21' ? 'U21' : 'National team'} pool · ` +
-        `metric from the OFFENSE's perspective · cells show value (games)`;
+        `metric from the offense's perspective · cells show value (games)`;
       footer.innerHTML = `Updated ${DOC.generated} · ` +
         `<a href="players.html" style="color:inherit">player stats</a> · ` +
         `<a href="index.html" style="color:inherit">leaderboards</a>`;
@@ -176,9 +236,10 @@
   document.getElementById('metricSel').addEventListener('change', e => {
     state.metric = e.target.value; render();
   });
-  seasonMulti.addEventListener('change', render);
   allSeasons.addEventListener('change', () => {
-    seasonMulti.disabled = allSeasons.checked; render();
+    if (allSeasons.checked) state.seasons = null;
+    else state.seasons = new Set();
+    render();
   });
   render();
 </script>
