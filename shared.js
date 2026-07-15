@@ -56,6 +56,42 @@ async function getLog(teamKey) {
   return _logCache[teamKey];
 }
 
+// ── passphrase-protected table docs (core_/defense_/matrix files) ──
+const _b64b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function decryptDoc(env) {
+  for (;;) {
+    let pw = sessionStorage.getItem('norgePw');
+    if (!pw) {
+      pw = prompt('This table is passphrase-protected.\nEnter passphrase:');
+      if (pw == null) throw new Error('locked');
+      sessionStorage.setItem('norgePw', pw);
+    }
+    try {
+      const mat = await crypto.subtle.importKey('raw',
+        new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        {name:'PBKDF2', salt:_b64b(env.salt), iterations:env.iter, hash:'SHA-256'},
+        mat, {name:'AES-GCM', length:256}, false, ['decrypt']);
+      const pt = await crypto.subtle.decrypt(
+        {name:'AES-GCM', iv:_b64b(env.iv)}, key, _b64b(env.ct));
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (e) {
+      sessionStorage.removeItem('norgePw');   // wrong passphrase — re-ask
+      if (e.message === 'locked') throw e;
+    }
+  }
+}
+const _tblCache = {};
+async function getTable(name, team) {
+  const key = team ? `${name}_${team}` : name;
+  if (!_tblCache[key])
+    _tblCache[key] = fetch(`${key}.json`)
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(j => j.ct ? decryptDoc(j) : j)
+      .catch(e => { delete _tblCache[key]; throw e; });
+  return _tblCache[key];
+}
+
 function ensureModal() {
   if (document.getElementById('playerModal')) return;
   const back = document.createElement('div');

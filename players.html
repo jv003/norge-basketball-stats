@@ -10,12 +10,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="wide">
 <div class="wrap">
 
   <div class="topbar">
     <a class="wordmark" href="index.html" style="text-decoration:none">Norge<span>Basketball</span></a>
-    <div class="topbar-right">
+    <div class="topbar-right" style="display:flex;gap:12px;align-items:center">
+      <a href="matrix.html" class="pill-check" style="text-decoration:none">Matrix</a>
       <div class="switcher" id="teamSwitch">
         <button class="active" data-team="u21">U21</button>
         <button data-team="nt">National Team</button>
@@ -35,13 +36,14 @@
       <div class="hero-team" id="heroTeam">All-Time Player Stats</div>
       <div class="hero-sub" id="heroSub">Every player, every ingested season</div>
     </div>
-    <div class="record-block" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <div class="record-block" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
       <div class="switcher" id="viewSwitch">
         <button data-view="stats" class="active">Stats</button>
         <button data-view="core">Core</button>
         <button data-view="def">Defense</button>
       </div>
-      <select id="seasonSel" class="switcher" style="padding:6px 10px"></select>
+      <select id="seasonSel" class="season-select"></select>
+      <label class="pill-check"><input type="checkbox" id="curOnly"> Current squad</label>
       <div class="switcher" id="modeSwitch">
         <button data-mode="totals" class="active">Totals</button>
         <button data-mode="pergame">Per Game</button>
@@ -77,43 +79,8 @@
     ['stl','STL'], ['blk','BLK']];
   let tSort = 'pts', tDir = -1;
 
-  // per-table docs, fetched lazily and cached: players_/core_/defense_{team}.
-  // Core/Defense docs arrive AES-GCM encrypted — passphrase prompted once
-  // per session (sessionStorage), key derived via WebCrypto PBKDF2.
-  const _tblCache = {};
-  const b64b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-  async function decryptDoc(env) {
-    for (;;) {
-      let pw = sessionStorage.getItem('norgePw');
-      if (!pw) {
-        pw = prompt('This table is passphrase-protected.\nEnter passphrase:');
-        if (pw == null) throw new Error('locked');
-        sessionStorage.setItem('norgePw', pw);
-      }
-      try {
-        const mat = await crypto.subtle.importKey('raw',
-          new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-        const key = await crypto.subtle.deriveKey(
-          {name:'PBKDF2', salt:b64b(env.salt), iterations:env.iter, hash:'SHA-256'},
-          mat, {name:'AES-GCM', length:256}, false, ['decrypt']);
-        const pt = await crypto.subtle.decrypt(
-          {name:'AES-GCM', iv:b64b(env.iv)}, key, b64b(env.ct));
-        return JSON.parse(new TextDecoder().decode(pt));
-      } catch (e) {
-        sessionStorage.removeItem('norgePw');   // wrong passphrase — re-ask
-        if (e.message === 'locked') throw e;
-      }
-    }
-  }
-  async function getTable(name, team) {
-    const key = `${name}_${team}`;
-    if (!_tblCache[key])
-      _tblCache[key] = fetch(`${key}.json`)
-        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(j => j.ct ? decryptDoc(j) : j)
-        .catch(e => { delete _tblCache[key]; throw e; });
-    return _tblCache[key];
-  }
+  // per-table docs via shared.js getTable() — Core/Defense arrive encrypted
+  // and decrypt after a once-per-session passphrase prompt.
 
   function seasonLabel() {
     return state.season === 'all' ? 'All-Time' : `Season ${state.season}`;
@@ -132,7 +99,8 @@
     const t = DATA.teams[state.team];
     const doc = await getTable('players', state.team);
     fillSeasons(doc.seasons);
-    const rows = (doc.data[state.season] || []).slice();
+    let rows = (doc.data[state.season] || []).slice();
+    rows = applyCur(rows, await curSet(), r => r[F.name]);
     const pg = state.mode === 'pergame';
     document.getElementById('tableTitle').textContent =
       `${seasonLabel()} Stats — ${t.team}${pg ? ' · per game' : ' · totals'}`;
@@ -171,7 +139,8 @@
     const t = DATA.teams[state.team];
     const doc = await getTable('core', state.team);
     fillSeasons(doc.seasons);
-    const rows = (doc.data[state.season] || []).slice();
+    let rows = (doc.data[state.season] || []).slice();
+    rows = applyCur(rows, await curSet(), r => r[0]);
     document.getElementById('tableTitle').textContent =
       `${seasonLabel()} Advanced — ${t.team} · competitive NT games only`;
     heroSub.textContent = `${t.team} · on-floor rates (friendlies excluded)`;
@@ -205,7 +174,8 @@
     const t = DATA.teams[state.team];
     const doc = await getTable('defense', state.team);
     fillSeasons(doc.seasons);
-    const rows = (doc.data[state.season] || []).slice();
+    let rows = (doc.data[state.season] || []).slice();
+    rows = applyCur(rows, await curSet(), r => r[0]);
     document.getElementById('tableTitle').textContent =
       `${seasonLabel()} Defense — ${t.team} · competitive NT games only`;
     heroSub.textContent = `${t.team} · shooters vs their own baselines; ` +
@@ -246,9 +216,22 @@
     });
   }
 
+  // current-squad filter: names from players_{team}.json's `current` list
+  async function curSet() {
+    if (!document.getElementById('curOnly').checked) return null;
+    const doc = await getTable('players', state.team);
+    return new Set(doc.current || []);
+  }
+  const norm = s => String(s).replace(/ /g, ' ');
+  function applyCur(rows, set, nameOf) {
+    if (!set || !set.size) return rows;
+    return rows.filter(r => set.has(norm(nameOf(r))));
+  }
+
   function render() {
-    document.getElementById('modeSwitch').style.display =
-      state.view === 'stats' ? '' : 'none';
+    // visibility (not display) so the control row never reflows/jumps
+    document.getElementById('modeSwitch').style.visibility =
+      state.view === 'stats' ? 'visible' : 'hidden';
     const go = { stats: renderStats, core: renderCore, def: renderDef }[state.view]();
     go.catch(e => {
       document.querySelector('#statsTable tbody').innerHTML =
@@ -280,6 +263,7 @@
     state.season = seasonSel.value;
     render();
   });
+  document.getElementById('curOnly').addEventListener('change', render);
 
   fetch('data.json')
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
