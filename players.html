@@ -180,7 +180,7 @@
       `${seasonLabel()} Defense — ${t.team} · competitive NT games only`;
     heroSub.textContent = `${t.team} · shooters vs their own baselines; ` +
       `grades ranked within the ${state.team === 'u21' ? 'U21' : 'NT'} pool` +
-      (state.season === 'all' ? ' (latest-season grade shown)' : '');
+      (state.season === 'all' ? ' (career grades)' : '');
     const val = (r, k) => k <= 3
       ? (k === 0 ? r[0] : (GRADE_RANK[r[k]] ?? -1)) : (r[k] ?? -1e9);
     rows.sort((a, b) => dSort === 0
