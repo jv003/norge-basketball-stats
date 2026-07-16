@@ -43,6 +43,14 @@
         <button data-view="def">Defense</button>
       </div>
       <select id="seasonSel" class="season-select"></select>
+      <select id="minGpSel" class="season-select" title="Minimum games played">
+        <option value="0">Min GP: any</option>
+        <option value="3">Min GP: 3</option>
+        <option value="5">Min GP: 5</option>
+        <option value="10">Min GP: 10</option>
+        <option value="15">Min GP: 15</option>
+        <option value="25">Min GP: 25</option>
+      </select>
       <label class="pill-check"><input type="checkbox" id="curOnly"> Current squad</label>
       <div class="switcher" id="modeSwitch">
         <button data-mode="totals" class="active">Totals</button>
@@ -71,7 +79,8 @@
   let DATA = null;
   const viewButtons = document.querySelectorAll('#viewSwitch button');
   const seasonSel = document.getElementById('seasonSel');
-  const state = { team: 'u21', mode: 'totals', view: 'stats', season: 'all' };
+  const state = { team: 'u21', mode: 'totals', view: 'stats', season: 'all',
+                  minGp: 0 };
   const T_COLS = [
     ['name','Player'], ['gp','GP'], ['min','MIN'], ['pts','PTS'], ['fg','FG'],
     ['fgp','FG%'], ['efg','eFG%'], ['tp','3PT'], ['ft','FT'], ['ast','AST'],
@@ -141,6 +150,7 @@
     fillSeasons(doc.seasons);
     let rows = (doc.data[state.season] || []).slice();
     rows = applyCur(rows, await curSet(), r => r[0]);
+    if (state.minGp) rows = rows.filter(r => r[1] >= state.minGp);
     document.getElementById('tableTitle').textContent =
       `${seasonLabel()} Advanced — ${t.team} · competitive NT games only`;
     heroSub.textContent = `${t.team} · on-floor rates (friendlies excluded)`;
@@ -163,26 +173,32 @@
   }
 
   // ── Defense view (defense_{team}.json — xDFG + grades, competitive) ──
-  const D_COLS = ['Player','Grade','Rim','Per','Contested',
+  // data row: [name, grade, rim, per, contested, 12 zone cells..., gp@17]
+  // (gp appended at the END server-side so zone offsets stay stable)
+  const D_COLS = ['Player','GP','Grade','Rim','Per','Contested',
     'INS Ct','INS DFG%','INS xDFG%','INS Imp',
     'MID Ct','MID DFG%','MID xDFG%','MID Imp',
     '3PT Ct','3PT DFG%','3PT xDFG%','3PT Imp'];
+  const DMAP = [0,17,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
   const GRADE_RANK = {'F':1,'D-':2,'D':3,'D+':4,'C-':5,'C':6,'C+':7,
     'B-':8,'B':9,'B+':10,'A-':11,'A':12,'A+':13};
-  let dSort = 4, dDir = -1;
+  let dSort = 5, dDir = -1;
   async function renderDef() {
     const t = DATA.teams[state.team];
     const doc = await getTable('defense', state.team);
     fillSeasons(doc.seasons);
     let rows = (doc.data[state.season] || []).slice();
     rows = applyCur(rows, await curSet(), r => r[0]);
+    // old exports lack gp (idx 17): filter passes those rows untouched
+    if (state.minGp) rows = rows.filter(r => (r[17] ?? Infinity) >= state.minGp);
     document.getElementById('tableTitle').textContent =
       `${seasonLabel()} Defense — ${t.team} · competitive NT games only`;
     heroSub.textContent = `${t.team} · shooters vs their own baselines; ` +
       `grades ranked within the ${state.team === 'u21' ? 'U21' : 'NT'} pool` +
       (state.season === 'all' ? ' (career grades)' : '');
-    const val = (r, k) => k <= 3
-      ? (k === 0 ? r[0] : (GRADE_RANK[r[k]] ?? -1)) : (r[k] ?? -1e9);
+    const val = (r, k) => k === 0 ? r[0]
+      : (k >= 2 && k <= 4) ? (GRADE_RANK[r[DMAP[k]]] ?? -1)
+      : (r[DMAP[k]] ?? -1e9);
     rows.sort((a, b) => dSort === 0
       ? dDir * String(a[0]).localeCompare(b[0])
       : dDir * (val(a, dSort) - val(b, dSort)));
@@ -196,14 +212,15 @@
       `<td style="font-weight:600;color:${x <= -3 ? '#1a7f37' : x >= 3
         ? 'var(--red)' : 'inherit'}">${x > 0 ? '+' : ''}${x}</td>`;
     document.querySelector('#statsTable tbody').innerHTML = rows.map(r => {
-      let h = `<tr><td>${r[0]}</td>${gcell(r[1])}${gcell(r[2])}${gcell(r[3])}<td>${r[4]}</td>`;
+      let h = `<tr><td>${r[0]}</td><td>${r[17] ?? '—'}</td>` +
+        `${gcell(r[1])}${gcell(r[2])}${gcell(r[3])}<td>${r[4]}</td>`;
       for (let z = 0; z < 3; z++) {
         const o = 5 + z * 4;
         h += `<td>${r[o]}</td><td>${r[o+1] ?? '—'}</td><td>${r[o+2] ?? '—'}</td>${icell(r[o+3])}`;
       }
       return h + '</tr>';
     }).join('') ||
-      '<tr><td colspan="17">No competitive-game defensive data for this season.</td></tr>';
+      '<tr><td colspan="18">No competitive-game defensive data for this season.</td></tr>';
     wireSort(k => { dSort = +k; }, () => dSort, d => { dDir = d; }, () => dDir);
   }
 
@@ -232,6 +249,8 @@
     // visibility (not display) so the control row never reflows/jumps
     document.getElementById('modeSwitch').style.visibility =
       state.view === 'stats' ? 'visible' : 'hidden';
+    document.getElementById('minGpSel').style.visibility =
+      state.view === 'stats' ? 'hidden' : 'visible';
     const go = { stats: renderStats, core: renderCore, def: renderDef }[state.view]();
     go.catch(e => {
       document.querySelector('#statsTable tbody').innerHTML =
@@ -261,6 +280,10 @@
   }));
   seasonSel.addEventListener('change', () => {
     state.season = seasonSel.value;
+    render();
+  });
+  document.getElementById('minGpSel').addEventListener('change', e => {
+    state.minGp = +e.target.value;
     render();
   });
   document.getElementById('curOnly').addEventListener('change', render);

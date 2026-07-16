@@ -26,7 +26,8 @@
 
   <div class="topbar">
     <a class="wordmark" href="index.html" style="text-decoration:none">Norge<span>Basketball</span></a>
-    <div class="topbar-right">
+    <div class="topbar-right" style="display:flex;gap:12px;align-items:center">
+      <a href="players.html" class="pill-check" style="text-decoration:none">Player Stats</a>
       <div class="switcher" id="poolSwitch">
         <button class="active" data-pool="u21">U21</button>
         <button data-pool="nt">National Team</button>
@@ -126,7 +127,25 @@
     pace: {f: c => c.poss / c.games,                         d: 1},
   };
 
-  let DOC = null, K = null;
+  let DOC = null, K = null, G = null;
+
+  // one GLOBAL strategy order per pool: usage counted across ALL
+  // competition types + seasons (S60+), so every table shows identical
+  // columns/rows — most-used offense leftmost, most-used defense top —
+  // and the order never shifts when filters change.
+  function computeGlobalOrder() {
+    const oc = {}, dc = {};
+    for (const r of DOC.rows) {
+      const o = {}; K.forEach((k, i) => o[k] = r[i]);
+      if (o.season < 60) continue;
+      oc[o.off] = (oc[o.off] || 0) + (+o.games || 0);
+      dc[o.def] = (dc[o.def] || 0) + (+o.games || 0);
+    }
+    G = {
+      offs: Object.keys(oc).sort((a, b) => oc[b] - oc[a]),
+      defs: Object.keys(dc).sort((a, b) => dc[b] - dc[a]),
+    };
+  }
 
   function fillSeasonPills() {
     const box = document.getElementById('seasonPills');
@@ -179,11 +198,10 @@
   function renderOne(tableId, comp, regionFilter) {
     const {cells, offT, defT} = buildMatrix(comp, regionFilter);
     const m = METRIC[state.metric];
-    const offs = Object.keys(offT).sort((a, b) => offT[b].games - offT[a].games);
-    const defs = Object.keys(defT).sort((a, b) => defT[b].games - defT[a].games);
+    const offs = G.offs, defs = G.defs;   // global order, all tables
     const head = document.querySelector(`#${tableId} thead tr`);
     const body = document.querySelector(`#${tableId} tbody`);
-    if (!offs.length) {
+    if (!Object.keys(offT).length) {
       head.innerHTML = '';
       body.innerHTML = '<tr><td>No games in this cut.</td></tr>';
       return;
@@ -210,6 +228,7 @@
     try {
       DOC = await getTable('matrix', state.pool);
       K = DOC.keys;
+      computeGlobalOrder();
       fillSeasonPills();
       fillRegionPills();
       renderOne('matWC', 'wc');
