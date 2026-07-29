@@ -246,11 +246,13 @@
     rows = applyCur(rows, await curSet(), r => r[0]);
     if (state.minGp) rows = rows.filter(r => (r[20] ?? Infinity) >= state.minGp);
     document.getElementById('tableTitle').textContent =
-      `${seasonLabel()} Offense — ${t.team} · all NT games`;
+      `${seasonLabel()} Offense — ${t.team} · all NT games, S60 onward`;
     heroSub.textContent = `${t.team} · contested FG% vs each defender's own ` +
       `baseline (xCFG); Op = uncontested / off-a-pass · grades ranked within ` +
       `the ${state.team === 'u21' ? 'U21' : 'NT'} pool` +
-      (state.season === 'all' ? ' (career grades)' : '');
+      (state.season === 'all'
+        ? ' (career grades) · shot data starts S60 — earlier careers not covered'
+        : '');
     const val = (r, k) => k === 0 ? r[0]
       : (k >= 2 && k <= 4) ? (GRADE_RANK[r[OMAP[k]]] ?? -1)
       : (r[OMAP[k]] ?? -1e9);
