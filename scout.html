@@ -67,6 +67,7 @@ a.t{color:var(--ink);text-decoration:underline;font-weight:600;cursor:pointer;
 .skill .k{font-family:'IBM Plex Mono',monospace;font-size:10px;
   letter-spacing:.5px;color:var(--ink-2)}
 .skill .v{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums}
+.tl-dot{color:var(--accent);font-size:9px;vertical-align:2px}
 </style>
 </head>
 <body class="wide">
@@ -123,9 +124,24 @@ function bundle(pool){
       .catch(e => { delete _bundles[pool]; throw e; });
   return _bundles[pool];
 }
+function syncSwitch(){
+  document.querySelectorAll('#teamSwitch button').forEach(b =>
+    b.classList.toggle('active', b.dataset.pool === state.pool));
+}
 async function team(tid){
   const B = await bundle(state.pool);
-  const d = B.docs[String(tid)];
+  let d = B.docs[String(tid)];
+  if (!d){
+    // deep link into the other pool (bookmarked NT team while U21 is
+    // active, or vice versa) — follow it and flip the switcher
+    const other = state.pool === 'u21' ? 'nt' : 'u21';
+    const B2 = await bundle(other).catch(() => null);
+    if (B2 && B2.docs[String(tid)]){
+      state.pool = other;
+      syncSwitch();
+      d = B2.docs[String(tid)];
+    }
+  }
   if (!d) throw new Error('no data');
   return d;
 }
@@ -293,7 +309,9 @@ async function teamPage(tid){
     .filter(([,,s]) => s && s.gp > 0)
     .sort((a, b) => (2*b[2].fgm + b[2].tpm + b[2].ftm)/b[2].gp -
                     (2*a[2].fgm + a[2].tpm + a[2].ftm)/a[2].gp);
-  const plink = pn => `<a class="t" href="#/player/${tid}/${encodeURIComponent(pn)}">${esc(pn)}</a>`;
+  // red dot = TL skill card on file (attributes captured — see player page)
+  const plink = pn => `<a class="t" href="#/player/${tid}/${encodeURIComponent(pn)}">${esc(pn)}</a>${
+    T.players[pn]?.tl ? ' <span class="tl-dot" title="Transfer-list skill card on file — open the player page">●</span>' : ''}`;
   const GOOD = new Set(['A-','A','A+']), BAD = new Set(['F','D-','D']);
   const GRANK = {}; ['F','D-','D','D+','C-','C','C+','B-','B','B+','A-','A','A+']
     .forEach((g, i) => GRANK[g] = i);
@@ -323,18 +341,30 @@ async function teamPage(tid){
       const m = s.pos?.[P], v = m && s.gp ? m / s.gp : null;
       return v ? num(v) : {v: -1e12, h: '—'};
     };
+    const tot = T.totals?.[String(cur)];
+    const usg = (pn, s) => {
+      if (!tot || !s.mn) return {v: -1e12, h: '—'};
+      const tp = tot.fga + 0.44*tot.fta + tot.tov;
+      return num(tp ? 100*(s.fga + 0.44*s.fta + s.tov)*(tot.mn/5)/(s.mn*tp) : null);
+    };
+    const trb = (pn, s) => {
+      if (!tot || !s.mn) return {v: -1e12, h: '—'};
+      const den = tot.reb + (tot.oreb || 0);
+      return num(den ? 100*s.reb*(tot.mn/5)/(s.mn*den) : null);
+    };
     cols = [
       ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
       ['GP', (pn, s) => num(s.gp, 0)],
       ['TS%', (pn, s) => num(pctv(2*s.fgm + s.tpm + s.ftm, 2*(s.fga + 0.44*s.fta)))],
-      ['TOV%', (pn, s) => num(pctv(s.tov, s.fga + 0.44*s.fta + s.tov))],
-      ['A/TO', (pn, s) => s.tov ? num(s.ast/s.tov) : {v: s.ast ? 999 : -1e12, h: s.ast ? '∞' : '—'}],
+      ['USG%', usg],
+      ['TRB%', trb],
       ['PG', pmin('PG')], ['SG', pmin('SG')], ['SF', pmin('SF')],
       ['PF', pmin('PF')], ['C', pmin('C')],
     ];
-    pnote = `<div class="note">TS% = points per 2 true attempts (FG + 0.44·FTA — folds
-      free throws in). Position columns are minutes per game at each spot, competitive
-      games only.</div>`;
+    pnote = `<div class="note">TS% = points per 2 true attempts (FG + 0.44·FTA). USG% =
+      share of team possessions used while on the floor. TRB% = share of ALL available
+      rebounds (both teams) grabbed while on the floor — a low TRB% big is a glass to
+      attack. Position columns are minutes per game at each spot, competitive only.</div>`;
   } else {
     cols = [
       ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
@@ -351,8 +381,10 @@ async function teamPage(tid){
       ['Rtng', (pn, s) => num(s.rtng)],
     ];
   }
-  const ptitle = {grades: 'letter grades · offense + defense combined',
+  let ptitle = {grades: 'letter grades · offense + defense combined',
     adv: 'advanced · efficiency + minutes by position'}[state.pview] || 'per-game · click for history';
+  if (prows.some(([pn]) => T.players[pn]?.tl))
+    ptitle += ' · <span class="tl-dot">●</span> = TL skill card on file';
   let rows = prows.map(([pn,, s]) => cols.map(c => c[1](pn, s)));
   const sc = state.psort, sd = state.pdir || -1;
   if (sc != null && cols[sc]){
@@ -459,20 +491,33 @@ async function playerPage(tid, pn){
       <td>${pct(s.fgm,s.fga)}</td><td>${pct(s.tpm,s.tpa)}</td><td>${pct(s.ftm,s.fta)}</td>
       <td>${f1(s.rtng)}</td></tr>`;
   }).join('');
+  // NB: no training-week column here — international minutes say nothing
+  // about club training; position mix is still useful scouting.
   const posRows = seasons.map(se => {
     const s = P.seasons[String(se)];
     const pos = s.pos || {};
     const tot = Object.values(pos).reduce((a,b)=>a+b,0);
     const top = Object.entries(pos).sort((a,b)=>b[1]-a[1])
       .map(([p,v]) => `${p} ${Math.round(v)}`).join(' · ');
-    const tw = Object.entries(s.tw || {}).sort((a,b)=>b[1]-a[1])
-      .map(([p,v]) => `<b>${p}</b>×${v}`).join(' · ');
     return `<tr><td>S${se}</td><td>${Math.round(tot)}</td>
-      <td style="text-align:left">${top||'—'}</td>
-      <td style="text-align:left">${tw||'—'}</td></tr>`;
+      <td style="text-align:left">${top||'—'}</td></tr>`;
   }).join('');
   const sh = P.sheet;
   let evid = '<div class="note">No public sheet captured for this player.</div>';
+  let tlBlock = '';
+  if (P.tl){
+    const t = P.tl, L = t.listing;
+    const money = v => v == null ? '?' : (+v).toLocaleString();
+    const lst = !L ? '' : L[1] === 'sold'
+      ? ` · <span class="W">SOLD</span> ${esc(L[0])} for ${money(L[2])} → ${esc(L[3] || '?')}`
+      : L[1] === 'pending' ? ` · <span class="dis">LIVE on the TL</span> (deadline ${esc(L[0])}, at ${money(L[2])})`
+      : ` · ${esc(L[1])} ${esc(L[0])} at ${money(L[2])}`;
+    tlBlock = `<div class="note"><b>Transfer-list skill card</b> — captured
+        ${esc(t.date)} · age ${t.age} · ${esc(t.pot || '—')}${lst}
+        <span class="muted">(name match — verify identity)</span></div>
+      <div class="skills">${t.skills.map(([k, v]) =>
+        `<div class="skill"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>`;
+  }
   if (sh){
     const sk = sh.skills ? `<div class="note">Known skills (exact) — seen ${esc(sh.skills_date)}:</div>
       <div class="skills">${Object.entries(sh.skills).map(([k,v]) =>
@@ -494,13 +539,11 @@ async function playerPage(tid, pn){
       <th>STL</th><th>BLK</th><th>FG%</th><th>3P%</th><th>FT%</th><th>Rtng</th></tr></thead>
       <tbody>${hist}</tbody></table></div>
     <div class="card"><h2>Minutes by position</h2>
-      <table><thead><tr><th>Season</th><th>Min</th><th style="text-align:left">By position</th>
-      <th style="text-align:left">48-min training weeks</th></tr></thead>
+      <table><thead><tr><th>Season</th><th>Min</th><th style="text-align:left">By position</th></tr></thead>
       <tbody>${posRows}</tbody></table>
-      <div class="note">Training weeks = Sat–Fri weeks with 48+ min at one position, or at a
-      training pair (PG/SG · SG/SF · SF/PF · PF/C) shown as a group. Weeks are a LOWER bound
-      where we don't hold their club scrims. Minutes column = competitive games only.</div></div>
-    <div class="card"><h2>Attribute evidence</h2>${evid}</div>`;
+      <div class="note">International minutes only — where the coach deploys them, not
+      training evidence (training happens at their club).</div></div>
+    <div class="card"><h2>Attribute evidence</h2>${tlBlock}${evid}</div>`;
 }
 
 /* ── router + pool switcher ── */
