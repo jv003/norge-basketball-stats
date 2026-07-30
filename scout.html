@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Norge Basketball — Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+/* scout app kit on top of the site sheet — white cards on navy,
+   mono tables, red accents (ported from the local league-scout page) */
+:root{
+  --card:#FFFFFF; --hair:rgba(0,32,91,0.15);
+  --ink-2:rgba(0,32,91,0.6); --ink-3:rgba(0,32,91,0.4);
+  --accent:#EF2B2D; --accent-ink:#c21e20;
+  --win:#3d7a3d; --loss:#EF2B2D; --edge:#3d7a3d; --dis:#c21e20;
+}
+.layout{display:grid;grid-template-columns:250px 1fr;gap:16px;margin-top:14px}
+@media (max-width:900px){.layout{grid-template-columns:1fr}}
+.rail{font-size:12.5px}
+.card{background:var(--card);color:var(--ink);border:0;border-radius:4px;
+  padding:12px 14px;margin-bottom:14px;overflow:auto}
+.card h2{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.card h2::before{content:'';width:8px;height:8px;border-radius:2px;
+  background:var(--red);flex-shrink:0}
+.card h2 .n{color:var(--ink-3);font-weight:400;font-size:11px;letter-spacing:.08em}
+.card table{border-collapse:collapse;width:100%}
+.card th,.card td{padding:4.5px 7px;text-align:right;white-space:nowrap;
+  font-size:12.8px;font-variant-numeric:tabular-nums}
+.card th:first-child,.card td:first-child{text-align:left}
+.card thead th{font-family:'IBM Plex Mono',monospace;font-size:10.8px;
+  text-transform:uppercase;letter-spacing:.08em;background:var(--navy-deep);
+  color:#EAF0F6;border-bottom:0}
+.card tbody td{font-family:'IBM Plex Mono',monospace;border-top:1px solid var(--hair)}
+.card tbody td:first-child{font-family:'IBM Plex Sans',sans-serif;font-weight:500}
+a.t{color:var(--ink);text-decoration:underline;font-weight:600;cursor:pointer;
+  text-decoration-color:rgba(239,43,45,0.4);text-underline-offset:3px}
+.controls-scout{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 4px}
+.controls-scout a.t{color:var(--paper);text-decoration-color:rgba(239,43,45,0.6);font-size:13px}
+.W{color:var(--win);font-weight:700}.L{color:var(--loss);font-weight:700}
+.card .L{color:var(--accent-ink)}
+.edge{color:var(--edge);font-weight:700}.dis{color:var(--dis);font-weight:700}
+.muted{color:var(--ink-3)}
+.seg{display:inline-flex;background:var(--navy-deep);border-radius:999px;
+  border:1px solid rgba(233,237,241,0.12);padding:3px;margin-right:8px}
+.seg button{border:0;background:none;padding:5px 12px;font:inherit;
+  font-family:'IBM Plex Mono',monospace;text-transform:uppercase;
+  letter-spacing:.08em;font-size:11.5px;color:rgba(233,237,241,0.55);
+  cursor:pointer;border-radius:999px}
+.seg button.on{background:var(--red);color:#fff;font-weight:600}
+.note{font-size:11.8px;color:var(--ink-2);margin:6px 0 2px;
+  font-family:'IBM Plex Sans',sans-serif;white-space:normal}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:10px;margin-bottom:14px}
+.tile{background:var(--card);color:var(--ink);border-radius:4px;padding:9px 12px}
+.tile .lab{font-family:'IBM Plex Mono',monospace;font-size:10px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.tile .val{font-size:21px;font-weight:650;
+  font-family:'Big Shoulders Display',sans-serif;text-transform:uppercase}
+.skills{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin:6px 0}
+.skill{background:var(--card);border:1px solid var(--hair);border-radius:4px;
+  padding:5px 8px;text-align:center}
+.skill .k{font-family:'IBM Plex Mono',monospace;font-size:10px;
+  letter-spacing:.5px;color:var(--ink-2)}
+.skill .v{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body class="wide">
+<div class="wrap">
+
+  <div class="topbar">
+    <a class="wordmark" href="index.html" style="text-decoration:none">Norge<span>Scout</span></a>
+    <div class="topbar-right" style="display:flex;gap:12px;align-items:center">
+      <a href="players.html" class="pill-check" style="text-decoration:none">Player Stats</a>
+      <a href="matrix.html" class="pill-check" style="text-decoration:none">Off/Def Analysis</a>
+      <div class="switcher" id="teamSwitch">
+        <button class="active" data-pool="u21">U21</button>
+        <button data-pool="nt">National Team</button>
+      </div>
+    </div>
+    <svg class="flag" viewBox="0 0 24 18" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flag of Norway">
+      <rect width="24" height="18" fill="var(--red)"/>
+      <rect x="6" width="6" height="18" fill="#FFFFFF"/>
+      <rect y="6" width="24" height="6" fill="#FFFFFF"/>
+      <rect x="7.4" width="3.2" height="18" fill="var(--navy)"/>
+      <rect y="7.4" width="24" height="3.2" fill="var(--navy)"/>
+    </svg>
+  </div>
+
+  <div class="controls-scout">
+    <a class="t" href="#/">← schedule</a>
+    <span id="hsub" style="font-family:'IBM Plex Mono',monospace;font-size:11px;
+      letter-spacing:.08em;text-transform:uppercase;color:rgba(233,237,241,0.55)">loading…</span>
+  </div>
+  <div class="layout">
+    <div class="rail" id="rail"></div>
+    <div id="main"><div class="card">Loading…</div></div>
+  </div>
+
+  <footer id="footer">Passphrase-protected scouting data.</footer>
+</div>
+
+<script src="shared.js"></script>
+<script>
+'use strict';
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const pct = (m, a) => a ? (100*m/a).toFixed(1) : '—';
+const f1 = v => v == null ? '—' : (+v).toFixed(1);
+
+/* ── encrypted per-pool bundles (scout_u21.json / scout_nt.json) ──
+   fetch + decryptDoc (shared.js) — passphrase prompted once, kept in
+   sessionStorage. Everything below reads from the decrypted bundle. */
+const _bundles = {};
+function bundle(pool){
+  if (!_bundles[pool])
+    _bundles[pool] = fetch(`scout_${pool}.json`)
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(j => j.ct ? decryptDoc(j) : j)
+      .catch(e => { delete _bundles[pool]; throw e; });
+  return _bundles[pool];
+}
+async function team(tid){
+  const B = await bundle(state.pool);
+  const d = B.docs[String(tid)];
+  if (!d) throw new Error('no data');
+  return d;
+}
+const tlink = (tid, name) => `<a class="t" href="#/team/${tid}">${esc(name)}</a>`;
+const RLAB = ['OS','IS','OD','ID','RB','Flow'];
+const glink = (g, self) =>
+  `<a class="t" href="#/game/${g.mid}/${self}/${g.opp}">${g.us}–${g.them}</a>`;
+
+function schedTable(sched, self){
+  return `<table><thead><tr><th>Date</th><th>S</th><th>Type</th><th>Opponent</th>
+    <th>H/A</th><th>Res</th><th>Score</th><th>Off</th><th>Def</th></tr></thead><tbody>` +
+    sched.map(g => {
+      const win = g.us > g.them;
+      return `<tr><td>${g.d}</td><td>S${g.season}</td><td>${esc(g.t.replace('nt.',''))}</td>
+        <td>${tlink(g.opp, g.oppname)}</td><td>${g.ha}</td>
+        <td class="${win?'W':'L'}">${g.forfeit?'F-':''}${win?'W':'L'}</td>
+        <td>${glink(g, self)}</td><td>${esc(g.off||'')}</td><td>${esc(g.deff||'')}</td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+function miniSched(gs, self){
+  const recent = gs.slice(-12).reverse();
+  return `<table><tbody>` + recent.map(g => {
+    const win = g.us > g.them;
+    return `<tr><td class="muted">${g.d.slice(5)}</td>
+      <td style="text-align:left">${tlink(g.opp, g.oppname)}</td>
+      <td class="${win?'W':'L'}">${win?'W':'L'}</td><td>${glink(g, self)}</td></tr>`;
+  }).join('') + '</tbody></table>';
+}
+
+/* ── transfer-list card (pool-filtered Norwegian sightings) ── */
+function tlCard(tl){
+  if (!tl || !tl.length) return '';
+  const rows = tl.map(p => p.listings.map((L, i) => {
+    const [d, price, status, to] = L;
+    const st = status === 'sold'
+      ? `<span class="W">SOLD</span> → ${esc(to || '?')}`
+      : status === 'pending' ? `<span class="dis">LIVE</span>`
+      : `<span class="muted">${esc(status)}</span>`;
+    return `<tr><td>${i ? '<span class="muted">·</span>' : esc(p.name)}</td>
+      <td>${i ? '' : p.age}</td>
+      <td style="text-align:left">${i ? '' : `<span class="muted">${esc(p.pot || '—')}</span>`}</td>
+      <td>${esc(d)}</td><td>${(price ?? 0).toLocaleString()}</td>
+      <td style="text-align:left">${st}</td></tr>`;
+  }).join('')).join('');
+  const skills = tl.filter(p => p.skills && p.skills.length).map(p =>
+    `<div class="note"><b>${esc(p.name)}</b> — TL card ${esc(p.skills_date || '')}: ` +
+    p.skills.map(([k, v]) => `${k} ${v}`).join(' · ') + '</div>').join('');
+  return `<div class="card"><h2>Transfer list <span class="n">Norwegian pool sightings ·
+      since collection began 2026-07-15</span></h2>
+    <table><thead><tr><th>Player</th><th>Age</th><th style="text-align:left">Potential</th>
+    <th>Deadline</th><th>Ask/Sale</th><th style="text-align:left">Outcome</th></tr></thead>
+    <tbody>${rows}</tbody></table>${skills}
+    <div class="note">Every listing we sighted; a sold-and-trained player's TL skill card is
+    the last exact reading before they resurface in this pool. Watch the repeat listings —
+    a dropping ask is a motivated seller.</div></div>`;
+}
+
+/* ── home ── */
+async function home(){
+  const B = await bundle(state.pool);
+  const cd = B.club;
+  const sched = cd.schedule.filter(g => g.us != null);
+  document.getElementById('rail').innerHTML =
+    `<div class="card"><h2>Results</h2>` + miniSched(sched, cd.team_id) + '</div>';
+  document.getElementById('main').innerHTML =
+    `<div class="card"><h2>${esc(cd.name)} schedule <span class="n">competitive games ·
+      click an opponent</span></h2>` + schedTable(sched.slice().reverse(), cd.team_id) + '</div>' +
+    tlCard(B.tl);
+  document.getElementById('hsub').textContent =
+    `Season ${B.season ?? '?'} · generated ${B.generated}`;
+  document.getElementById('footer').textContent =
+    `Updated ${B.generated} · encrypted scouting data · BuzzerBeater play-by-play archive`;
+}
+
+/* ── box score page ── */
+function boxTable(name, lines){
+  if (!lines) return `<div class="card"><h2>${esc(name)}</h2>
+    <div class="note">No box data — team not in the archive for this game.</div></div>`;
+  const rows = lines.slice().sort((a, b) => (b[15] - a[15]) || (b[1] - a[1]));
+  const tot = new Array(13).fill(0);
+  rows.forEach(r => { for (let i = 1; i <= 12; i++) tot[i] += r[i] || 0; });
+  const pts = r => 2*r[2] + r[4] + r[6];
+  const mark = r => r[16] ? ` <span style="cursor:help" title="${esc(r[16])}">${
+    r[16].includes('hot') ? '🔥' : '❄️'}</span>` : '';
+  return `<div class="card"><h2>${esc(name)}</h2>
+    <table><thead><tr><th>Player</th><th>MIN</th><th>PTS</th><th>FG</th><th>3PT</th>
+    <th>FT</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th><th>PF</th>
+    <th>Rtng</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${r[15] ? '<b>' : ''}${esc(r[0])}${r[15] ? '</b>' : ''}${mark(r)}</td>
+      <td>${r[1].toFixed(0)}</td><td>${pts(r)}</td><td>${r[2]}/${r[3]}</td>
+      <td>${r[4]}/${r[5]}</td><td>${r[6]}/${r[7]}</td><td>${r[8]}</td><td>${r[9]}</td>
+      <td>${r[10]}</td><td>${r[11]}</td><td>${r[12]}</td><td>${r[13] ?? '—'}</td>
+      <td>${f1(r[14])}</td></tr>`).join('') +
+    `<tr style="font-weight:700"><td>Total</td><td>${tot[1].toFixed(0)}</td>
+      <td>${2*tot[2] + tot[4] + tot[6]}</td><td>${tot[2]}/${tot[3]}</td>
+      <td>${tot[4]}/${tot[5]}</td><td>${tot[6]}/${tot[7]}</td><td>${tot[8]}</td>
+      <td>${tot[9]}</td><td>${tot[10]}</td><td>${tot[11]}</td><td>${tot[12]}</td>
+      <td></td><td></td></tr></tbody></table>
+    <div class="note">Starters bold · 🔥/❄️ = shooting far from the player's own season
+    rate (|z| ≥ 2, volume-gated) — RNG evidence, hover for the numbers.</div></div>`;
+}
+async function gamePage(mid, ta, tb){
+  const [A, B] = await Promise.all([team(ta).catch(() => null),
+                                    team(tb).catch(() => null)]);
+  const g = A?.schedule.find(x => x.mid === mid) ||
+            B?.schedule.find(x => x.mid === mid);
+  if (!g){ document.getElementById('main').innerHTML =
+    '<div class="card">Game not found.</div>'; return; }
+  const gA = A?.schedule.find(x => x.mid === mid);
+  document.getElementById('rail').innerHTML =
+    `<div class="card"><h2>${gA ? esc(gA.d) : ''}</h2>
+     <div class="note">${tlink(ta, A?.name || ta)} vs ${tlink(tb, B?.name || tb)}</div></div>`;
+  const hdr = gA ? `
+    <div class="tiles">
+      <div class="tile"><div class="lab">${esc(gA.d)} · ${esc(gA.t)}</div>
+        <div class="val" style="font-size:18px">${esc(A.name)} ${gA.us}–${gA.them} ${esc(gA.oppname)}</div></div>
+      <div class="tile"><div class="lab">${esc(A.name)}</div>
+        <div class="val" style="font-size:14px;font-family:'IBM Plex Mono',monospace">${esc(gA.off||'?')} / ${esc(gA.deff||'?')}<br>
+        <span class="muted" style="font-size:11px">GDP: ${esc(gA.focus||'—')} · ${esc(gA.pace||'—')}</span></div></div>
+      <div class="tile"><div class="lab">${esc(gA.oppname)}</div>
+        <div class="val" style="font-size:14px;font-family:'IBM Plex Mono',monospace">${esc(gA.ooff||'?')} / ${esc(gA.odef||'?')}</div></div>
+    </div>` : '';
+  document.getElementById('main').innerHTML = hdr +
+    boxTable(A?.name || `team ${ta}`, A?.box?.[String(mid)]) +
+    boxTable(B?.name || `team ${tb}`, B?.box?.[String(mid)]);
+}
+
+/* ── team page ── */
+async function teamPage(tid){
+  let T;
+  try { T = await team(tid); }
+  catch(e){
+    document.getElementById('main').innerHTML =
+      `<div class="card">No data for this team (${e.message}).</div>`;
+    document.getElementById('rail').innerHTML = '';
+    return;
+  }
+  const seasons = T.seasons;
+  const cur = state.season && seasons.includes(state.season) ? state.season : seasons[0];
+  const td = T.tendencies[String(cur)] || {};
+  const n = k => td[k] || 0;
+  const advRow = (lab, p) => {
+    const e = n(`adv_${p}_edge`), d = n(`adv_${p}_dis`), u = n(`adv_${p}_neutral`);
+    const tot = e + d + u;
+    return `<tr><td>${lab}</td><td class="edge">${e}</td><td>${u}</td>
+      <td class="dis">${d}</td><td>${tot ? (100*e/tot).toFixed(0)+'%' : '—'}</td></tr>`;
+  };
+  const gdpRow = (lab, p) => {
+    const h = n(`gdp_${p}_hit`), m = n(`gdp_${p}_miss`);
+    return `<tr><td>${lab}</td><td class="edge">${h}</td><td class="dis">${m}</td>
+      <td>${h+m ? (100*h/(h+m)).toFixed(0)+'%' : '—'}</td></tr>`;
+  };
+  const freq = (pre) => Object.entries(td).filter(([k]) => k.startsWith(pre))
+    .map(([k, v]) => [k.slice(pre.length), v]).sort((a, b) => b[1] - a[1]);
+  const freqT = (rows) => `<table><thead><tr><th>Tactic</th><th>G</th></tr></thead><tbody>` +
+    rows.map(([s, v]) => `<tr><td>${esc(s)}</td><td>${v}</td></tr>`).join('') + '</tbody></table>';
+  const ratT = (rows) => `<table><thead><tr><th>Tactic</th>${RLAB.map(l=>`<th>${l}</th>`).join('')}
+    <th>G</th></tr></thead><tbody>` +
+    rows.filter(r => r[0] === cur).sort((a,b) => b[8]-a[8]).map(r =>
+      `<tr><td>${esc(r[1])}</td>${r.slice(2,8).map(v=>`<td>${f1(v)}</td>`).join('')}
+       <td>${r[8]}</td></tr>`).join('') + '</tbody></table>';
+
+  const prows = Object.entries(T.players)
+    .map(([pn, p]) => [pn, p, p.seasons[String(cur)]])
+    .filter(([,,s]) => s && s.gp > 0)
+    .sort((a, b) => (2*b[2].fgm + b[2].tpm + b[2].ftm)/b[2].gp -
+                    (2*a[2].fgm + a[2].tpm + a[2].ftm)/a[2].gp);
+  const plink = pn => `<a class="t" href="#/player/${tid}/${encodeURIComponent(pn)}">${esc(pn)}</a>`;
+  const GOOD = new Set(['A-','A','A+']), BAD = new Set(['F','D-','D']);
+  const GRANK = {}; ['F','D-','D','D+','C-','C','C+','B-','B','B+','A-','A','A+']
+    .forEach((g, i) => GRANK[g] = i);
+  const gcol = g => ({ v: g == null ? -1 : GRANK[g] ?? -1,
+    h: g == null ? '—' : `<span style="font-weight:700;color:${GOOD.has(g) ? 'var(--win)' :
+      BAD.has(g) ? 'var(--accent-ink)' : 'inherit'}">${g}</span>` });
+  const num = (v, dec=1) => ({ v: v == null || !isFinite(v) ? -1e12 : v,
+    h: v == null || !isFinite(v) ? '—' : (+v).toFixed(dec) });
+  const per = (s, k) => s.gp ? s[k] / s.gp : null;
+  const pctv = (m, a) => a ? 100*m/a : null;
+  let cols, pnote = '';
+  if (state.pview === 'grades'){
+    cols = [
+      ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
+      ['GP', (pn, s) => num(s.gp, 0)],
+      ['Off', (pn, s) => gcol(s.grades?.o?.[0])],
+      ['Rim', (pn, s) => gcol(s.grades?.o?.[1])],
+      ['Per', (pn, s) => gcol(s.grades?.o?.[2])],
+      ['Def', (pn, s) => gcol(s.grades?.d?.[0])],
+      ['Rim', (pn, s) => gcol(s.grades?.d?.[1])],
+      ['Per', (pn, s) => gcol(s.grades?.d?.[2])],
+    ];
+    pnote = `<div class="note">Percentiled within the pool, team-game gated (3+ team games,
+      0.8+ zone contests/team game). Dash = didn't qualify or metric not computed.</div>`;
+  } else if (state.pview === 'adv'){
+    const pmin = P => (pn, s) => {
+      const m = s.pos?.[P], v = m && s.gp ? m / s.gp : null;
+      return v ? num(v) : {v: -1e12, h: '—'};
+    };
+    cols = [
+      ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
+      ['GP', (pn, s) => num(s.gp, 0)],
+      ['TS%', (pn, s) => num(pctv(2*s.fgm + s.tpm + s.ftm, 2*(s.fga + 0.44*s.fta)))],
+      ['TOV%', (pn, s) => num(pctv(s.tov, s.fga + 0.44*s.fta + s.tov))],
+      ['A/TO', (pn, s) => s.tov ? num(s.ast/s.tov) : {v: s.ast ? 999 : -1e12, h: s.ast ? '∞' : '—'}],
+      ['PG', pmin('PG')], ['SG', pmin('SG')], ['SF', pmin('SF')],
+      ['PF', pmin('PF')], ['C', pmin('C')],
+    ];
+    pnote = `<div class="note">TS% = points per 2 true attempts (FG + 0.44·FTA — folds
+      free throws in). Position columns are minutes per game at each spot, competitive
+      games only.</div>`;
+  } else {
+    cols = [
+      ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
+      ['GP', (pn, s) => num(s.gp, 0)],
+      ['MIN', (pn, s) => num(per(s, 'mn'))],
+      ['PTS', (pn, s) => num(s.gp ? (2*s.fgm + s.tpm + s.ftm)/s.gp : null)],
+      ['REB', (pn, s) => num(per(s, 'reb'))],
+      ['AST', (pn, s) => num(per(s, 'ast'))],
+      ['STL', (pn, s) => num(per(s, 'stl'))],
+      ['BLK', (pn, s) => num(per(s, 'blk'))],
+      ['FG%', (pn, s) => num(pctv(s.fgm, s.fga))],
+      ['3P%', (pn, s) => num(pctv(s.tpm, s.tpa))],
+      ['FT%', (pn, s) => num(pctv(s.ftm, s.fta))],
+      ['Rtng', (pn, s) => num(s.rtng)],
+    ];
+  }
+  const ptitle = {grades: 'letter grades · offense + defense combined',
+    adv: 'advanced · efficiency + minutes by position'}[state.pview] || 'per-game · click for history';
+  let rows = prows.map(([pn,, s]) => cols.map(c => c[1](pn, s)));
+  const sc = state.psort, sd = state.pdir || -1;
+  if (sc != null && cols[sc]){
+    rows.sort((a, b) => {
+      const x = a[sc].v, y = b[sc].v;
+      return sd * (typeof x === 'string' ? x.localeCompare(y) : x - y);
+    });
+  }
+  const proster = `<table><thead><tr>` +
+    cols.map((c, i) => `<th data-pc="${i}" style="cursor:pointer">${c[0]}${
+      i === sc ? (sd < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('') +
+    `</tr></thead><tbody>` +
+    rows.map(r => `<tr>${r.map(c => `<td>${c.h}</td>`).join('')}</tr>`).join('') +
+    '</tbody></table>' + pnote;
+  const pseg = `<div class="seg" style="margin-bottom:8px">
+    ${[['stats','Stats'],['adv','Advanced'],['grades','Grades']].map(([k,l]) =>
+      `<button data-pv="${k}" class="${(state.pview||'stats')===k?'on':''}">${l}</button>`).join('')}
+  </div>`;
+
+  document.getElementById('rail').innerHTML =
+    `<div class="card"><h2>Schedule <span class="n">S${cur}</span></h2>` +
+    miniSched(T.schedule.filter(g => g.season === cur && g.us != null), tid) + '</div>';
+  document.getElementById('main').innerHTML = `
+    <div class="tiles">
+      <div class="tile"><div class="lab">Team</div><div class="val">${esc(T.name)}</div></div>
+      <div class="tile"><div class="lab">Pool</div><div class="val" style="font-size:16px">${esc(T.league||'?')}</div></div>
+      <div class="tile"><div class="lab">Sheet</div><div class="val" style="font-size:16px">${esc(T.sheet_date||'none')}</div></div>
+    </div>
+    <div class="seg">${seasons.map(s =>
+      `<button data-se="${s}" class="${s===cur?'on':''}">S${s}</button>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:12px">
+      <div class="card"><h2>Offenses run <span class="n">S${cur}</span></h2>${freqT(freq('off:'))}</div>
+      <div class="card"><h2>Defenses run</h2>${freqT(freq('def:'))}</div>
+      <div class="card"><h2>Tactical advantage <span class="n">draft doctrine</span></h2>
+        <table><thead><tr><th></th><th>Edge</th><th>Neut</th><th>Dis</th><th>Edge%</th></tr></thead>
+        <tbody>${advRow('Their offense','off')}${advRow('Their defense','def')}</tbody></table>
+        <table style="margin-top:8px"><thead><tr><th>GDP</th><th>Hit</th><th>Miss</th><th>Hit%</th></tr></thead>
+        <tbody>${gdpRow('Focus','focus')}${gdpRow('Pace','pace')}</tbody></table>
+        <div class="note">Edge = attacking what the defense leaves open (inside vs 1-3-1/3-2,
+        outside vs 2-3); box-and-one judged on scoring balance. Confound: enthusiasm/effort
+        also move results.</div></div>
+    </div>
+    ${(() => {
+      const bs = T.bands || {};
+      if (!['underdog','matched','favored'].some(b => bs[b])) return '';
+      const row = b => {
+        const B = bs[b] || {};
+        const list = pre => Object.entries(B).filter(([k]) => k.startsWith(pre))
+          .sort((x, y) => y[1] - x[1])
+          .map(([k, v]) => `${esc(k.slice(pre.length))} ${v}`).join(' · ') || '—';
+        const g = p => { const h = B[`gdp_${p}_hit`]||0, m = B[`gdp_${p}_miss`]||0;
+          return h + m ? `${h}/${h+m}` : '—'; };
+        return `<tr><td style="text-transform:capitalize">${b}</td><td>${B.n||0}</td>
+          <td style="text-align:left">${list('off:')}</td>
+          <td style="text-align:left">${list('def:')}</td>
+          <td>${g('focus')}</td><td>${g('pace')}</td></tr>`;
+      };
+      return `<div class="card"><h2>Tactics by strength gap
+          <span class="n">±5 ppg bands · S${cur}</span></h2>
+        <table><thead><tr><th>Band</th><th>G</th><th style="text-align:left">Offenses</th>
+        <th style="text-align:left">Defenses</th><th>Focus hit</th><th>Pace hit</th></tr></thead>
+        <tbody>${row('underdog')}${row('matched')}${row('favored')}</tbody></table>
+        <div class="note">Band = ppg-differential gap vs each opponent (this team:
+        ${T.ppg_diff == null ? '?' : (T.ppg_diff > 0 ? '+' : '') + T.ppg_diff} ppg).
+        The scouting question: what do they do when outmatched? Mind the n.</div></div>`;
+    })()}
+    <div class="card"><h2>Avg ratings by OFFENSE <span class="n">S${cur} · n on every row</span></h2>
+      ${ratT(T.ratings_off)}</div>
+    <div class="card"><h2>Avg ratings by DEFENSE</h2>${ratT(T.ratings_def)}
+      <div class="note">Ratings move with GS/enthusiasm/effort too — a tactic saved for big
+      games inherits that lift.</div></div>
+    <div class="card"><h2>Players <span class="n">S${cur} ${ptitle}</span></h2>
+      ${pseg}${proster}</div>`;
+  document.querySelectorAll('.seg button[data-se]').forEach(b =>
+    b.onclick = () => { state.season = +b.dataset.se; teamPage(tid); });
+  document.querySelectorAll('.seg button[data-pv]').forEach(b =>
+    b.onclick = () => { state.pview = b.dataset.pv; state.psort = null; teamPage(tid); });
+  document.querySelectorAll('th[data-pc]').forEach(th =>
+    th.onclick = () => {
+      const i = +th.dataset.pc;
+      if (state.psort === i) state.pdir = -(state.pdir || -1);
+      else { state.psort = i; state.pdir = i === 0 ? 1 : -1; }
+      teamPage(tid);
+    });
+}
+
+/* ── player page ── */
+async function playerPage(tid, pn){
+  const T = await team(tid).catch(() => null);
+  if (!T || !T.players[pn]){
+    document.getElementById('main').innerHTML = `<div class="card">No data for ${esc(pn)}.</div>`;
+    return;
+  }
+  const P = T.players[pn];
+  const seasons = Object.keys(P.seasons).map(Number).sort((a,b)=>b-a);
+  const hist = seasons.map(se => {
+    const s = P.seasons[String(se)], g = s.gp || 1;
+    const pts = 2*s.fgm + s.tpm + s.ftm;
+    const lg = s.league && s.league !== T.league ? ` <span class="muted">· ${esc(s.league)}</span>` : '';
+    const gr = s.grades ? ` <span class="muted">O:${s.grades.o?.[0]??'—'} D:${s.grades.d?.[0]??'—'}</span>` : '';
+    return `<tr><td>S${se}${lg}${gr}</td><td>${s.gp}</td><td>${(s.mn/g).toFixed(1)}</td>
+      <td>${(pts/g).toFixed(1)}</td><td>${(s.reb/g).toFixed(1)}</td><td>${(s.ast/g).toFixed(1)}</td>
+      <td>${(s.stl/g).toFixed(1)}</td><td>${(s.blk/g).toFixed(1)}</td>
+      <td>${pct(s.fgm,s.fga)}</td><td>${pct(s.tpm,s.tpa)}</td><td>${pct(s.ftm,s.fta)}</td>
+      <td>${f1(s.rtng)}</td></tr>`;
+  }).join('');
+  const posRows = seasons.map(se => {
+    const s = P.seasons[String(se)];
+    const pos = s.pos || {};
+    const tot = Object.values(pos).reduce((a,b)=>a+b,0);
+    const top = Object.entries(pos).sort((a,b)=>b[1]-a[1])
+      .map(([p,v]) => `${p} ${Math.round(v)}`).join(' · ');
+    const tw = Object.entries(s.tw || {}).sort((a,b)=>b[1]-a[1])
+      .map(([p,v]) => `<b>${p}</b>×${v}`).join(' · ');
+    return `<tr><td>S${se}</td><td>${Math.round(tot)}</td>
+      <td style="text-align:left">${top||'—'}</td>
+      <td style="text-align:left">${tw||'—'}</td></tr>`;
+  }).join('');
+  const sh = P.sheet;
+  let evid = '<div class="note">No public sheet captured for this player.</div>';
+  if (sh){
+    const sk = sh.skills ? `<div class="note">Known skills (exact) — seen ${esc(sh.skills_date)}:</div>
+      <div class="skills">${Object.entries(sh.skills).map(([k,v]) =>
+        `<div class="skill"><div class="k">${k}</div><div class="v">${v??'—'}</div></div>`).join('')}</div>`
+      : `<div class="note">No skill levels known — public sheet only (salary/age/DMI).</div>`;
+    const trail = sh.sheets.slice(-10).map(([d,a,s,dm]) =>
+      `<tr><td>${d}</td><td>${a}</td><td>${s?.toLocaleString?.()??s}</td>
+       <td>${dm?.toLocaleString?.()??dm}</td></tr>`).join('');
+    evid = sk + `<table><thead><tr><th>Sheet</th><th>Age</th><th>Salary</th><th>DMI</th></tr></thead>
+      <tbody>${trail}</tbody></table>
+      <div class="note">Salary steps at rollover = last season's skill movement; weekly DMI ≈ GS
+      (reliable young, cautious on veterans). Evidence only — reader concludes.</div>`;
+  }
+  document.getElementById('rail').innerHTML =
+    `<div class="card"><h2>${esc(T.name)}</h2><div class="note">${tlink(tid, '← team page')}</div></div>`;
+  document.getElementById('main').innerHTML = `
+    <div class="card"><h2>${esc(pn)} <span class="n">${esc(T.name)} · per-game by season</span></h2>
+      <table><thead><tr><th>Season</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th>
+      <th>STL</th><th>BLK</th><th>FG%</th><th>3P%</th><th>FT%</th><th>Rtng</th></tr></thead>
+      <tbody>${hist}</tbody></table></div>
+    <div class="card"><h2>Minutes by position</h2>
+      <table><thead><tr><th>Season</th><th>Min</th><th style="text-align:left">By position</th>
+      <th style="text-align:left">48-min training weeks</th></tr></thead>
+      <tbody>${posRows}</tbody></table>
+      <div class="note">Training weeks = Sat–Fri weeks with 48+ min at one position, or at a
+      training pair (PG/SG · SG/SF · SF/PF · PF/C) shown as a group. Weeks are a LOWER bound
+      where we don't hold their club scrims. Minutes column = competitive games only.</div></div>
+    <div class="card"><h2>Attribute evidence</h2>${evid}</div>`;
+}
+
+/* ── router + pool switcher ── */
+const state = { pool: 'u21', season: null };
+async function route(){
+  const h = location.hash.replace(/^#\/?/, '').split('/');
+  document.getElementById('rail').innerHTML = '';
+  try {
+    if (h[0] === 'team' && h[1]) await teamPage(+h[1]);
+    else if (h[0] === 'player' && h[1] && h[2]) await playerPage(+h[1], decodeURIComponent(h[2]));
+    else if (h[0] === 'game' && h[1] && h[2] && h[3]) await gamePage(+h[1], +h[2], +h[3]);
+    else await home();
+  } catch (e) {
+    document.getElementById('main').innerHTML = e.message === 'locked'
+      ? '<div class="card">Locked — reload and enter the passphrase to view.</div>'
+      : `<div class="card">Could not load scouting data (${esc(e.message)}) —
+         has scout_${esc(state.pool)}.json been exported?</div>`;
+  }
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+document.querySelectorAll('#teamSwitch button').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#teamSwitch button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.pool = btn.dataset.pool;
+    state.season = null;
+    location.hash = '#/';
+    route();
+  }));
+route();
+</script>
+</body>
+</html>
