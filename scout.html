@@ -172,20 +172,25 @@ function miniSched(gs, self){
 }
 
 /* ── transfer-list card (pool-filtered Norwegian sightings) ── */
+function tlStatus(status, to){
+  return status === 'sold'
+    ? `<span class="W">SOLD</span> → ${esc(to || '?')}`
+    : status === 'pending' ? `<span class="dis">LIVE</span>`
+    : `<span class="muted">${esc(status)}</span>`;
+}
 function tlCard(tl){
   if (!tl || !tl.length) return '';
-  const rows = tl.map(p => p.listings.map((L, i) => {
-    const [d, price, status, to] = L;
-    const st = status === 'sold'
-      ? `<span class="W">SOLD</span> → ${esc(to || '?')}`
-      : status === 'pending' ? `<span class="dis">LIVE</span>`
-      : `<span class="muted">${esc(status)}</span>`;
-    return `<tr><td>${i ? '<span class="muted">·</span>' : esc(p.name)}</td>
-      <td>${i ? '' : p.age}</td>
-      <td style="text-align:left">${i ? '' : `<span class="muted">${esc(p.pot || '—')}</span>`}</td>
+  // latest listing per player only — full history lives on the player page
+  const rows = tl.map(p => {
+    const [d, price, status, to] = p.listings[0];
+    const more = p.listings.length > 1
+      ? ` <span class="muted">+${p.listings.length - 1} earlier</span>` : '';
+    return `<tr><td>${esc(p.name)}</td>
+      <td>${p.age}</td>
+      <td style="text-align:left"><span class="muted">${esc(p.pot || '—')}</span></td>
       <td>${esc(d)}</td><td>${(price ?? 0).toLocaleString()}</td>
-      <td style="text-align:left">${st}</td></tr>`;
-  }).join('')).join('');
+      <td style="text-align:left">${tlStatus(status, to)}${more}</td></tr>`;
+  }).join('');
   const skills = tl.filter(p => p.skills && p.skills.length).map(p =>
     `<div class="note"><b>${esc(p.name)}</b> — TL card ${esc(p.skills_date || '')}: ` +
     p.skills.map(([k, v]) => `${k} ${v}`).join(' · ') + '</div>').join('');
@@ -194,9 +199,9 @@ function tlCard(tl){
     <table><thead><tr><th>Player</th><th>Age</th><th style="text-align:left">Potential</th>
     <th>Deadline</th><th>Ask/Sale</th><th style="text-align:left">Outcome</th></tr></thead>
     <tbody>${rows}</tbody></table>${skills}
-    <div class="note">Every listing we sighted; a sold-and-trained player's TL skill card is
-    the last exact reading before they resurface in this pool. Watch the repeat listings —
-    a dropping ask is a motivated seller.</div></div>`;
+    <div class="note">Latest listing per player — open the player page for the full listing
+    history. A sold-and-trained player's TL skill card is the last exact reading before they
+    resurface in this pool. A "+N earlier" with a dropping ask is a motivated seller.</div></div>`;
 }
 
 /* ── home ── */
@@ -512,11 +517,21 @@ async function playerPage(tid, pn){
       ? ` · <span class="W">SOLD</span> ${esc(L[0])} for ${money(L[2])} → ${esc(L[3] || '?')}`
       : L[1] === 'pending' ? ` · <span class="dis">LIVE on the TL</span> (deadline ${esc(L[0])}, at ${money(L[2])})`
       : ` · ${esc(L[1])} ${esc(L[0])} at ${money(L[2])}`;
+    // full listing history (export ships t.listings newest-first; older
+    // payloads only carry t.listing — fall back gracefully)
+    const hist = (t.listings || (L ? [L] : []));
+    const histTbl = hist.length ? `<div class="note"><b>Transfer-list history</b></div>
+      <table><thead><tr><th>Deadline</th><th>Ask/Sale</th>
+      <th style="text-align:left">Outcome</th></tr></thead><tbody>${
+      hist.map(([d, s, p, to]) => `<tr><td>${esc(d)}</td>
+        <td>${p == null ? '?' : (+p).toLocaleString()}</td>
+        <td style="text-align:left">${tlStatus(s, to)}</td></tr>`).join('')
+      }</tbody></table>` : '';
     tlBlock = `<div class="note"><b>Transfer-list skill card</b> — captured
         ${esc(t.date)} · age ${t.age} · ${esc(t.pot || '—')}${lst}
         <span class="muted">(name match — verify identity)</span></div>
       <div class="skills">${t.skills.map(([k, v]) =>
-        `<div class="skill"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>`;
+        `<div class="skill"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>` + histTbl;
   }
   if (sh){
     const sk = sh.skills ? `<div class="note">Known skills (exact) — seen ${esc(sh.skills_date)}:</div>
