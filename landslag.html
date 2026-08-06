@@ -9,6 +9,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<style>
+.squad-tag{
+  font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:600;
+  letter-spacing:.06em;color:rgba(0,32,91,0.55);
+  border:1px solid rgba(0,32,91,0.25);border-radius:999px;
+  padding:1px 6px;vertical-align:1px;white-space:nowrap}
+</style>
 </head>
 <body class="wide">
 <div class="wrap">
@@ -42,6 +49,11 @@
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <select class="season-select" id="seasonSel" aria-label="Season"></select>
       <select class="season-select" id="minGpSel" aria-label="Minimum games played"></select>
+      <div class="switcher" id="typeSwitch">
+        <button data-gt="c" class="active">Competitive</button>
+        <button data-gt="f">Friendlies</button>
+        <button data-gt="all">All Games</button>
+      </div>
     </div>
     <div class="switcher" id="modeSwitch">
       <button data-mode="pergame" class="active">Per Game</button>
@@ -63,43 +75,68 @@
 <script>
 'use strict';
 /* Player-facing box stats only — no zones, no defensive metrics, no
-   scouting layers. Reads the public players_u21.json / players_nt.json
-   (row layout = F in shared.js) and reuses the site's player-card modal
-   (season table + game log from the public gamelog files). */
+   scouting layers. Everything (table, cards, log) is aggregated straight
+   from the public gamelog_u21/nt.json files, whose rows carry a
+   game-type flag at index 18 ('c' competitive / 'f' friendly), so the
+   Competitive / Friendlies / All toggle applies everywhere at once. */
 const footer = document.getElementById('footer');
 const seasonSel = document.getElementById('seasonSel');
 const minGpSel = document.getElementById('minGpSel');
 
-let U = null, N = null;
-const state = { view: 'u21', season: null, mode: 'pergame', min: 1 };
+const LOGS = {};              // u21 / nt -> {player: [gamelog rows]}
+let hasFlags = false;         // false = data predates the type flag
+const state = { view: 'u21', season: null, mode: 'pergame', min: 1, gt: 'c' };
 
 minGpSel.innerHTML = Array.from({length: 25}, (_, i) =>
   `<option value="${i+1}">Min GP: ${i+1}</option>`).join('');
 
-function mergeRows(a, b){
-  const m = new Map();
-  for (const r of [...(a || []), ...(b || [])]){
-    const e = m.get(r[0]);
-    if (!e) m.set(r[0], r.slice());
-    else for (let i = 1; i < r.length; i++) e[i] += r[i] || 0;
+const inType = g => state.gt === 'all' || (g[18] || 'c') === state.gt;
+const scopeTeams = () => state.view === 'both' ? ['u21', 'nt'] : [state.view];
+
+function seasonList(){
+  const s = new Set();
+  for (const k of scopeTeams())
+    for (const rows of Object.values(LOGS[k]))
+      for (const g of rows) if (g[GL.season]) s.add(String(g[GL.season]));
+  return ['all', ...[...s].sort((a, b) => b - a)];
+}
+
+// aggregate filtered gamelog rows into the F row layout shared.js uses:
+// [name, gp, min, fgm, fga, tpm, tpa, ftm, fta, ast, past, to, reb, stl, blk]
+function aggRows(season){
+  const m = new Map(), squads = new Map();
+  for (const k of scopeTeams())
+    for (const [pn, rows] of Object.entries(LOGS[k])){
+      if (pn.startsWith('_')) continue;
+      for (const g of rows){
+        if (season !== 'all' && String(g[GL.season]) !== String(season)) continue;
+        if (!inType(g)) continue;
+        (squads.get(pn) || squads.set(pn, new Set()).get(pn)).add(k);
+        let r = m.get(pn);
+        if (!r){ r = [pn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; m.set(pn, r); }
+        r[F.gp] += 1;
+        r[F.min] += g[GL.min] || 0;
+        r[F.fgm] += g[GL.fgm] || 0; r[F.fga] += g[GL.fga] || 0;
+        r[F.tpm] += g[GL.tpm] || 0; r[F.tpa] += g[GL.tpa] || 0;
+        r[F.ftm] += g[GL.ftm] || 0; r[F.fta] += g[GL.fta] || 0;
+        r[F.ast] += g[GL.ast] || 0; r[F.past] += g[GL.past] || 0;
+        r[F.to] += g[GL.to] || 0; r[F.reb] += g[GL.reb] || 0;
+        r[F.stl] += g[GL.stl] || 0; r[F.blk] += g[GL.blk] || 0;
+      }
+    }
+  // index 15 (past the F layout, so nothing else reads it): which squads
+  // the player appeared for in this cut — drives the All Int'l name tag
+  for (const [pn, r] of m){
+    const s = squads.get(pn);
+    r[15] = s.has('u21') && s.has('nt') ? 'U21+NT' : s.has('nt') ? 'NT' : 'U21';
   }
   return [...m.values()];
 }
-function seasonList(){
-  if (state.view === 'u21') return U.seasons;
-  if (state.view === 'nt') return N.seasons;
-  const s = new Set([...U.seasons, ...N.seasons]);
-  s.delete('all');
-  return ['all', ...[...s].sort((a, b) => b - a)];
-}
-function rowsFor(season){
-  if (state.view === 'u21') return (U.data[season] || []).map(r => r.slice());
-  if (state.view === 'nt') return (N.data[season] || []).map(r => r.slice());
-  return mergeRows(U.data[season], N.data[season]);
-}
+
 const seasonLabel = s => s === 'all' ? 'Career' : 'Season ' + s;
 const VIEWLAB = { u21: 'Norway U21', nt: 'Norway National Team',
                   both: 'All International Games' };
+const GTLAB = { c: 'competitive', f: 'friendlies', all: 'all games' };
 
 function fillSeasons(){
   const list = seasonList();
@@ -131,7 +168,7 @@ function metric(r, k){
 
 function render(){
   const pg = state.mode === 'pergame';
-  const rows = rowsFor(state.season).filter(r => (r[F.gp] || 0) >= state.min);
+  const rows = aggRows(state.season).filter(r => (r[F.gp] || 0) >= state.min);
   rows.sort((a, b) => {
     let av = metric(a, sortK), bv = metric(b, sortK);
     if (pg && !['name','fgp','tpp','ftp'].includes(sortK)){
@@ -142,7 +179,8 @@ function render(){
   });
 
   document.getElementById('tableTitle').textContent =
-    `${VIEWLAB[state.view]} — ${seasonLabel(state.season)}${pg ? ' · per game' : ' · totals'}`;
+    `${VIEWLAB[state.view]} — ${seasonLabel(state.season)} · ${GTLAB[state.gt]}${
+      pg ? ' · per game' : ' · totals'}`;
   document.querySelector('#statsTable thead tr').innerHTML = COLS.map(([k, l]) =>
     `<th data-k="${k}" class="${k === sortK ? 'sorted' : ''}">${l}${
       k === sortK ? (sortD < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
@@ -152,8 +190,10 @@ function render(){
     const gp = r[F.gp] || 1;
     const s = pg ? (x => (x/gp).toFixed(1)) : (x => Math.round(x));
     const pts = 2*r[F.fgm] + r[F.tpm] + r[F.ftm];
+    const tag = state.view === 'both' && r[15]
+      ? ` <span class="squad-tag">${r[15]}</span>` : '';
     return `<tr>
-      <td class="name-click" data-p="${r[F.name]}">${r[F.name]}</td><td>${r[F.gp]}</td>
+      <td class="name-click" data-p="${r[F.name]}">${r[F.name]}${tag}</td><td>${r[F.gp]}</td>
       <td>${pg ? (r[F.min]/gp).toFixed(1) : Math.round(r[F.min])}</td>
       <td>${s(pts)}</td>
       <td>${s(r[F.fgm])}/${s(r[F.fga])}</td><td>${pct(metric(r,'fgp'))}</td>
@@ -162,7 +202,7 @@ function render(){
       <td>${s(r[F.reb])}</td><td>${s(r[F.ast])}</td><td>${s(r[F.to])}</td>
       <td>${s(r[F.stl])}</td><td>${s(r[F.blk])}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="15">No players at this minimum.</td></tr>`;
+  }).join('') || `<tr><td colspan="15">No games in this cut.</td></tr>`;
 
   document.querySelectorAll('#statsTable th').forEach(th => th.onclick = () => {
     const k = th.dataset.k;
@@ -174,30 +214,43 @@ function render(){
     td.onclick = () => showCard(td.dataset.p));
 }
 
-/* ── player card modal (site pattern, U21 + NT aware) ── */
+/* ── player card modal (site pattern; honors the game-type toggle) ── */
+function playerRows(k, name, season){
+  const m = new Map([[name, null]]);
+  const rows = (LOGS[k][name] || []).filter(g =>
+    inType(g) && (season === 'all' || String(g[GL.season]) === String(season)));
+  if (!rows.length) return null;
+  const r = [name, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  for (const g of rows){
+    r[F.gp] += 1; r[F.min] += g[GL.min] || 0;
+    r[F.fgm] += g[GL.fgm] || 0; r[F.fga] += g[GL.fga] || 0;
+    r[F.tpm] += g[GL.tpm] || 0; r[F.tpa] += g[GL.tpa] || 0;
+    r[F.ftm] += g[GL.ftm] || 0; r[F.fta] += g[GL.fta] || 0;
+    r[F.ast] += g[GL.ast] || 0; r[F.past] += g[GL.past] || 0;
+    r[F.to] += g[GL.to] || 0; r[F.reb] += g[GL.reb] || 0;
+    r[F.stl] += g[GL.stl] || 0; r[F.blk] += g[GL.blk] || 0;
+  }
+  return r;
+}
 async function showCard(name){
   ensureModal();
-  const inU = Object.keys(U.data).some(s => (U.data[s] || []).some(r => r[F.name] === name));
-  const inN = Object.keys(N.data).some(s => (N.data[s] || []).some(r => r[F.name] === name));
-  const scope = state.view === 'both'
-    ? [inU && 'u21', inN && 'nt'].filter(Boolean)
-    : [state.view];
+  const scope = scopeTeams().filter(k => (LOGS[k][name] || []).length);
   document.getElementById('pmName').textContent = name;
-  document.getElementById('pmSub').textContent = scope.length === 2
-    ? 'Norway U21 + National Team' : VIEWLAB[scope[0]];
+  document.getElementById('pmSub').textContent = (scope.length === 2
+    ? 'Norway U21 + National Team' : VIEWLAB[scope[0]] || VIEWLAB[state.view])
+    + ' · ' + GTLAB[state.gt];
 
-  // season rows, newest first, tagged by squad; combined career last
-  const SRC = { u21: [U, 'U21'], nt: [N, 'NT'] };
+  const TLAB = { u21: 'U21', nt: 'NT' };
+  const allSeasons = [...new Set(scope.flatMap(k =>
+    (LOGS[k][name] || []).filter(inType).map(g => String(g[GL.season]))))]
+    .sort((a, b) => b - a);
   const pairs = [];
-  const allSeasons = [...new Set(scope.flatMap(k => SRC[k][0].seasons))]
-    .filter(s => s !== 'all').sort((a, b) => b - a);
   for (const se of allSeasons)
     for (const k of scope){
-      const row = (SRC[k][0].data[se] || []).find(r => r[F.name] === name);
-      if (row) pairs.push([`Season ${se}${scope.length === 2 ? ' · ' + SRC[k][1] : ''}`, row]);
+      const row = playerRows(k, name, se);
+      if (row) pairs.push([`Season ${se}${scope.length === 2 ? ' · ' + TLAB[k] : ''}`, row]);
     }
-  const careers = scope.map(k => (SRC[k][0].data.all || []).find(r => r[F.name] === name))
-    .filter(Boolean);
+  const careers = scope.map(k => playerRows(k, name, 'all')).filter(Boolean);
   if (careers.length){
     const c = careers[0].slice();
     for (const r of careers.slice(1)) for (let i = 1; i < r.length; i++) c[i] += r[i] || 0;
@@ -210,7 +263,7 @@ async function showCard(name){
       <td style="text-align:left;color:rgba(0,32,91,0.45)">TOT</td>${statCells(r, false)}</tr>
     <tr class="pg-row"><td></td>
       <td style="text-align:left;color:rgba(0,32,91,0.45)">/G</td>${statCells(r, true)}</tr>
-  `).join('') || '<tr><td colspan="17">No season data.</td></tr>';
+  `).join('') || '<tr><td colspan="17">No games in this cut.</td></tr>';
 
   const back = document.getElementById('playerModal');
   back.classList.add('open');
@@ -220,16 +273,15 @@ async function showCard(name){
     ['Date','S','Opponent','W/L','Score','MIN','PTS','FG','3PT','FT',
      'AST','pAST','TO','REB','STL','BLK'].map(h =>
       `<th style="cursor:default">${h}</th>`).join('');
-  document.querySelector('#pmLog tbody').innerHTML =
-    '<tr><td colspan="16">Loading…</td></tr>';
-  const logs = await Promise.all(scope.map(k => getLog(k).catch(() => ({}))));
-  const log = logs.flatMap(l => l[name] || [])
+  const log = scope.flatMap(k => (LOGS[k][name] || []).filter(inType))
     .sort((a, b) => String(b[GL.date]).localeCompare(String(a[GL.date])));
   document.querySelector('#pmLog tbody').innerHTML = log.map(g => {
     const pts = 2*g[GL.fgm] + g[GL.tpm] + g[GL.ftm];
+    const fr = (g[18] || 'c') === 'f'
+      ? ' <span style="color:rgba(0,32,91,0.45);font-size:10px">F</span>' : '';
     return `<tr>
       <td>${g[GL.date]}</td><td>${g[GL.season]}</td>
-      <td style="text-align:left">${g[GL.opp]}</td>
+      <td style="text-align:left">${g[GL.opp]}${fr}</td>
       <td style="color:${g[GL.wl] === 'W' ? 'inherit' : 'var(--red)'};font-weight:600">${g[GL.wl]}</td>
       <td>${g[GL.score]}</td>
       <td>${g[GL.min].toFixed ? g[GL.min].toFixed(1) : g[GL.min]}</td>
@@ -243,11 +295,20 @@ async function showCard(name){
   }).join('') || '<tr><td colspan="16">No games found.</td></tr>';
 }
 
+/* ── controls ── */
 document.querySelectorAll('#teamSwitch button').forEach(btn =>
   btn.addEventListener('click', () => {
     document.querySelectorAll('#teamSwitch button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.view = btn.dataset.view;
+    fillSeasons();
+    render();
+  }));
+document.querySelectorAll('#typeSwitch button').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#typeSwitch button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.gt = btn.dataset.gt;
     fillSeasons();
     render();
   }));
@@ -261,16 +322,21 @@ document.querySelectorAll('#modeSwitch button').forEach(btn =>
 seasonSel.addEventListener('change', () => { state.season = seasonSel.value; render(); });
 minGpSel.addEventListener('change', () => { state.min = +minGpSel.value; render(); });
 
-Promise.all([
-  fetch('players_u21.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-  fetch('players_nt.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-]).then(([u, n]) => {
-  U = u; N = n;
+Promise.all([getLog('u21'), getLog('nt')]).then(([u, n]) => {
+  LOGS.u21 = u; LOGS.nt = n;
+  hasFlags = [u, n].some(l => Object.values(l).some(rows =>
+    rows.some(r => r.length > 18)));
+  if (!hasFlags){
+    // data predates the game-type flag: everything is one bucket —
+    // hide the toggle rather than show empty friendlies
+    document.getElementById('typeSwitch').style.display = 'none';
+    state.gt = 'all';
+  }
   fillSeasons();
   render();
-  footer.textContent = `Updated ${u.generated} · BuzzerBeater box-score data · norgebasketball`;
+  footer.textContent = 'BuzzerBeater box-score data · norgebasketball';
 }).catch(() => {
-  footer.textContent = 'Could not load player data — if opened as a local file, serve over HTTP.';
+  footer.textContent = 'Could not load game data — if opened as a local file, serve over HTTP.';
 });
 </script>
 </body>
