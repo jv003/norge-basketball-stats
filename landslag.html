@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Norge Basketball — Landslag Player Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="wide">
+<div class="wrap">
+
+  <div class="topbar">
+    <a class="wordmark" href="index.html" style="text-decoration:none">Norge<span>Basketball</span></a>
+    <div class="topbar-right" style="display:flex;gap:12px;align-items:center">
+      <div class="switcher" id="teamSwitch">
+        <button class="active" data-view="u21">U21</button>
+        <button data-view="nt">National Team</button>
+        <button data-view="both">All Int&rsquo;l</button>
+      </div>
+    </div>
+    <svg class="flag" viewBox="0 0 24 18" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flag of Norway">
+      <rect width="24" height="18" fill="var(--red)"/>
+      <rect x="6" width="6" height="18" fill="#FFFFFF"/>
+      <rect y="6" width="24" height="6" fill="#FFFFFF"/>
+      <rect x="7.4" width="3.2" height="18" fill="var(--navy)"/>
+      <rect y="7.4" width="24" height="3.2" fill="var(--navy)"/>
+    </svg>
+  </div>
+
+  <div class="hero">
+    <div>
+      <div class="hero-team" id="heroTeam">Landslagsstatistikk</div>
+      <div class="hero-sub" id="heroSub">Norway U21 &amp; National Team · box-score stats, every ingested season</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <select class="season-select" id="seasonSel" aria-label="Season"></select>
+      <select class="season-select" id="minGpSel" aria-label="Minimum games played"></select>
+    </div>
+    <div class="switcher" id="modeSwitch">
+      <button data-mode="pergame" class="active">Per Game</button>
+      <button data-mode="totals">Totals</button>
+    </div>
+  </div>
+
+  <div class="table-card" style="margin-top:0">
+    <div class="card-tab"><div class="notch"></div><span id="tableTitle">Player Stats</span></div>
+    <div class="table-scroll">
+      <table class="stats-table" id="statsTable"><thead><tr></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <footer id="footer">Loading…</footer>
+</div>
+
+<script src="shared.js"></script>
+<script>
+'use strict';
+/* Player-facing box stats only — no zones, no defensive metrics, no
+   scouting layers. Reads the public players_u21.json / players_nt.json
+   (row layout = F in shared.js) and reuses the site's player-card modal
+   (season table + game log from the public gamelog files). */
+const footer = document.getElementById('footer');
+const seasonSel = document.getElementById('seasonSel');
+const minGpSel = document.getElementById('minGpSel');
+
+let U = null, N = null;
+const state = { view: 'u21', season: null, mode: 'pergame', min: 1 };
+
+minGpSel.innerHTML = Array.from({length: 25}, (_, i) =>
+  `<option value="${i+1}">Min GP: ${i+1}</option>`).join('');
+
+function mergeRows(a, b){
+  const m = new Map();
+  for (const r of [...(a || []), ...(b || [])]){
+    const e = m.get(r[0]);
+    if (!e) m.set(r[0], r.slice());
+    else for (let i = 1; i < r.length; i++) e[i] += r[i] || 0;
+  }
+  return [...m.values()];
+}
+function seasonList(){
+  if (state.view === 'u21') return U.seasons;
+  if (state.view === 'nt') return N.seasons;
+  const s = new Set([...U.seasons, ...N.seasons]);
+  s.delete('all');
+  return ['all', ...[...s].sort((a, b) => b - a)];
+}
+function rowsFor(season){
+  if (state.view === 'u21') return (U.data[season] || []).map(r => r.slice());
+  if (state.view === 'nt') return (N.data[season] || []).map(r => r.slice());
+  return mergeRows(U.data[season], N.data[season]);
+}
+const seasonLabel = s => s === 'all' ? 'Career' : 'Season ' + s;
+const VIEWLAB = { u21: 'Norway U21', nt: 'Norway National Team',
+                  both: 'All International Games' };
+
+function fillSeasons(){
+  const list = seasonList();
+  if (!list.includes(state.season)) state.season = list[1] || list[0];
+  seasonSel.innerHTML = list.map(s =>
+    `<option value="${s}"${s === state.season ? ' selected' : ''}>${seasonLabel(s)}</option>`).join('');
+}
+
+const COLS = [
+  ['name','Player'], ['gp','GP'], ['min','MIN'], ['pts','PTS'], ['fg','FG'],
+  ['fgp','FG%'], ['tp','3PT'], ['tpp','3P%'], ['ft','FT'], ['ftp','FT%'],
+  ['reb','REB'], ['ast','AST'], ['to','TO'], ['stl','STL'], ['blk','BLK']];
+let sortK = 'pts', sortD = -1;
+
+function metric(r, k){
+  const pts = 2*r[F.fgm] + r[F.tpm] + r[F.ftm];
+  switch (k){
+    case 'name': return r[F.name];
+    case 'pts':  return pts;
+    case 'fg':   return r[F.fga];
+    case 'tp':   return r[F.tpa];
+    case 'ft':   return r[F.fta];
+    case 'fgp':  return r[F.fga] ? r[F.fgm]/r[F.fga] : -1;
+    case 'tpp':  return r[F.tpa] ? r[F.tpm]/r[F.tpa] : -1;
+    case 'ftp':  return r[F.fta] ? r[F.ftm]/r[F.fta] : -1;
+    default:     return r[F[k]];
+  }
+}
+
+function render(){
+  const pg = state.mode === 'pergame';
+  const rows = rowsFor(state.season).filter(r => (r[F.gp] || 0) >= state.min);
+  rows.sort((a, b) => {
+    let av = metric(a, sortK), bv = metric(b, sortK);
+    if (pg && !['name','fgp','tpp','ftp'].includes(sortK)){
+      av = a[F.gp] ? av/a[F.gp] : -1; bv = b[F.gp] ? bv/b[F.gp] : -1;
+    }
+    if (typeof av === 'string') return sortD * av.localeCompare(bv);
+    return sortD * (av - bv) || b[F.gp] - a[F.gp];
+  });
+
+  document.getElementById('tableTitle').textContent =
+    `${VIEWLAB[state.view]} — ${seasonLabel(state.season)}${pg ? ' · per game' : ' · totals'}`;
+  document.querySelector('#statsTable thead tr').innerHTML = COLS.map(([k, l]) =>
+    `<th data-k="${k}" class="${k === sortK ? 'sorted' : ''}">${l}${
+      k === sortK ? (sortD < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('');
+
+  const pct = x => x < 0 ? '—' : (100*x).toFixed(1);
+  document.querySelector('#statsTable tbody').innerHTML = rows.map(r => {
+    const gp = r[F.gp] || 1;
+    const s = pg ? (x => (x/gp).toFixed(1)) : (x => Math.round(x));
+    const pts = 2*r[F.fgm] + r[F.tpm] + r[F.ftm];
+    return `<tr>
+      <td class="name-click" data-p="${r[F.name]}">${r[F.name]}</td><td>${r[F.gp]}</td>
+      <td>${pg ? (r[F.min]/gp).toFixed(1) : Math.round(r[F.min])}</td>
+      <td>${s(pts)}</td>
+      <td>${s(r[F.fgm])}/${s(r[F.fga])}</td><td>${pct(metric(r,'fgp'))}</td>
+      <td>${s(r[F.tpm])}/${s(r[F.tpa])}</td><td>${pct(metric(r,'tpp'))}</td>
+      <td>${s(r[F.ftm])}/${s(r[F.fta])}</td><td>${pct(metric(r,'ftp'))}</td>
+      <td>${s(r[F.reb])}</td><td>${s(r[F.ast])}</td><td>${s(r[F.to])}</td>
+      <td>${s(r[F.stl])}</td><td>${s(r[F.blk])}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="15">No players at this minimum.</td></tr>`;
+
+  document.querySelectorAll('#statsTable th').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (sortK === k) sortD = -sortD;
+    else { sortK = k; sortD = k === 'name' ? 1 : -1; }
+    render();
+  });
+  document.querySelectorAll('#statsTable td.name-click').forEach(td =>
+    td.onclick = () => showCard(td.dataset.p));
+}
+
+/* ── player card modal (site pattern, U21 + NT aware) ── */
+async function showCard(name){
+  ensureModal();
+  const inU = Object.keys(U.data).some(s => (U.data[s] || []).some(r => r[F.name] === name));
+  const inN = Object.keys(N.data).some(s => (N.data[s] || []).some(r => r[F.name] === name));
+  const scope = state.view === 'both'
+    ? [inU && 'u21', inN && 'nt'].filter(Boolean)
+    : [state.view];
+  document.getElementById('pmName').textContent = name;
+  document.getElementById('pmSub').textContent = scope.length === 2
+    ? 'Norway U21 + National Team' : VIEWLAB[scope[0]];
+
+  // season rows, newest first, tagged by squad; combined career last
+  const SRC = { u21: [U, 'U21'], nt: [N, 'NT'] };
+  const pairs = [];
+  const allSeasons = [...new Set(scope.flatMap(k => SRC[k][0].seasons))]
+    .filter(s => s !== 'all').sort((a, b) => b - a);
+  for (const se of allSeasons)
+    for (const k of scope){
+      const row = (SRC[k][0].data[se] || []).find(r => r[F.name] === name);
+      if (row) pairs.push([`Season ${se}${scope.length === 2 ? ' · ' + SRC[k][1] : ''}`, row]);
+    }
+  const careers = scope.map(k => (SRC[k][0].data.all || []).find(r => r[F.name] === name))
+    .filter(Boolean);
+  if (careers.length){
+    const c = careers[0].slice();
+    for (const r of careers.slice(1)) for (let i = 1; i < r.length; i++) c[i] += r[i] || 0;
+    pairs.push([scope.length === 2 ? 'Career · All Int’l' : 'Career', c]);
+  }
+  document.querySelector('#pmSeasons thead tr').innerHTML =
+    ['Season', ''].concat(STAT_HEADS).map(h => `<th style="cursor:default">${h}</th>`).join('');
+  document.querySelector('#pmSeasons tbody').innerHTML = pairs.map(([label, r]) => `
+    <tr class="tot-row"><td>${label}</td>
+      <td style="text-align:left;color:rgba(0,32,91,0.45)">TOT</td>${statCells(r, false)}</tr>
+    <tr class="pg-row"><td></td>
+      <td style="text-align:left;color:rgba(0,32,91,0.45)">/G</td>${statCells(r, true)}</tr>
+  `).join('') || '<tr><td colspan="17">No season data.</td></tr>';
+
+  const back = document.getElementById('playerModal');
+  back.classList.add('open');
+  back.scrollTop = 0;
+
+  document.querySelector('#pmLog thead tr').innerHTML =
+    ['Date','S','Opponent','W/L','Score','MIN','PTS','FG','3PT','FT',
+     'AST','pAST','TO','REB','STL','BLK'].map(h =>
+      `<th style="cursor:default">${h}</th>`).join('');
+  document.querySelector('#pmLog tbody').innerHTML =
+    '<tr><td colspan="16">Loading…</td></tr>';
+  const logs = await Promise.all(scope.map(k => getLog(k).catch(() => ({}))));
+  const log = logs.flatMap(l => l[name] || [])
+    .sort((a, b) => String(b[GL.date]).localeCompare(String(a[GL.date])));
+  document.querySelector('#pmLog tbody').innerHTML = log.map(g => {
+    const pts = 2*g[GL.fgm] + g[GL.tpm] + g[GL.ftm];
+    return `<tr>
+      <td>${g[GL.date]}</td><td>${g[GL.season]}</td>
+      <td style="text-align:left">${g[GL.opp]}</td>
+      <td style="color:${g[GL.wl] === 'W' ? 'inherit' : 'var(--red)'};font-weight:600">${g[GL.wl]}</td>
+      <td>${g[GL.score]}</td>
+      <td>${g[GL.min].toFixed ? g[GL.min].toFixed(1) : g[GL.min]}</td>
+      <td>${pts}</td>
+      <td>${g[GL.fgm]}/${g[GL.fga]}</td>
+      <td>${g[GL.tpm]}/${g[GL.tpa]}</td>
+      <td>${g[GL.ftm]}/${g[GL.fta]}</td>
+      <td>${g[GL.ast]}</td><td>${g[GL.past]}</td><td>${g[GL.to]}</td>
+      <td>${g[GL.reb]}</td><td>${g[GL.stl]}</td><td>${g[GL.blk]}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="16">No games found.</td></tr>';
+}
+
+document.querySelectorAll('#teamSwitch button').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#teamSwitch button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.view = btn.dataset.view;
+    fillSeasons();
+    render();
+  }));
+document.querySelectorAll('#modeSwitch button').forEach(btn =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#modeSwitch button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mode = btn.dataset.mode;
+    render();
+  }));
+seasonSel.addEventListener('change', () => { state.season = seasonSel.value; render(); });
+minGpSel.addEventListener('change', () => { state.min = +minGpSel.value; render(); });
+
+Promise.all([
+  fetch('players_u21.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+  fetch('players_nt.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+]).then(([u, n]) => {
+  U = u; N = n;
+  fillSeasons();
+  render();
+  footer.textContent = `Updated ${u.generated} · BuzzerBeater box-score data · norgebasketball`;
+}).catch(() => {
+  footer.textContent = 'Could not load player data — if opened as a local file, serve over HTTP.';
+});
+</script>
+</body>
+</html>
