@@ -180,28 +180,47 @@ function tlStatus(status, to){
 }
 function tlCard(tl){
   if (!tl || !tl.length) return '';
-  // latest listing per player only — full history lives on the player page
-  const rows = tl.map(p => {
+  // default = pool-relevant only: players in the NT/U21 tracking registry
+  // plus the trainable cohort (age <= 20 — the sold-and-trained pipeline
+  // that resurfaces in S75/S76). "See all" opens the whole sold history.
+  const relevant = p => p.tracked || (p.age != null && p.age <= 20);
+  const shown = state.tlAll ? tl : tl.filter(relevant);
+  const hidden = tl.length - tl.filter(relevant).length;
+  // player name links to the live BB player card (new window)
+  const bbname = p => p.pid
+    ? `<a class="t" href="https://www.buzzerbeater.com/player/${p.pid}/overview.aspx"
+        target="_blank" rel="noopener">${esc(p.name)}</a>`
+    : esc(p.name);
+  const rows = shown.map(p => {
     const [d, price, status, to] = p.listings[0];
     const more = p.listings.length > 1
       ? ` <span class="muted">+${p.listings.length - 1} earlier</span>` : '';
-    return `<tr><td>${esc(p.name)}</td>
-      <td>${p.age}</td>
+    return `<tr><td>${bbname(p)}${p.tracked ?
+        ' <span class="tl-dot" title="In the NT/U21 tracking registry">●</span>' : ''}</td>
+      <td>${p.age ?? '—'}</td>
       <td style="text-align:left"><span class="muted">${esc(p.pot || '—')}</span></td>
       <td>${esc(d)}</td><td>${(price ?? 0).toLocaleString()}</td>
       <td style="text-align:left">${tlStatus(status, to)}${more}</td></tr>`;
   }).join('');
-  const skills = tl.filter(p => p.skills && p.skills.length).map(p =>
+  const skills = shown.filter(p => p.skills && p.skills.length).map(p =>
     `<div class="note"><b>${esc(p.name)}</b> — TL card ${esc(p.skills_date || '')}: ` +
     p.skills.map(([k, v]) => `${k} ${v}`).join(' · ') + '</div>').join('');
-  return `<div class="card"><h2>Transfer list <span class="n">Norwegian pool sightings ·
-      since collection began 2026-07-15</span></h2>
+  const toggle = hidden > 0 || state.tlAll
+    ? `<div class="note"><a class="t" id="tlmore">${state.tlAll
+        ? '▲ Back to relevant players only'
+        : `▼ See all ${tl.length} Norwegian sightings (${hidden} more)`}</a></div>`
+    : '';
+  return `<div class="card"><h2>Transfer list <span class="n">Norwegian pool ·
+      ${state.tlAll ? 'full sold history' : 'NT/U21-relevant'} ·
+      since 2026-07-15</span></h2>
     <table><thead><tr><th>Player</th><th>Age</th><th style="text-align:left">Potential</th>
     <th>Deadline</th><th>Ask/Sale</th><th style="text-align:left">Outcome</th></tr></thead>
-    <tbody>${rows}</tbody></table>${skills}
-    <div class="note">Latest listing per player — open the player page for the full listing
-    history. A sold-and-trained player's TL skill card is the last exact reading before they
-    resurface in this pool. A "+N earlier" with a dropping ask is a motivated seller.</div></div>`;
+    <tbody>${rows || '<tr><td colspan="6">No relevant sightings yet.</td></tr>'}</tbody>
+    </table>${skills}${toggle}
+    <div class="note">Latest listing per player · names open the live BB player card ·
+    ● = in our NT/U21 tracking registry. A sold-and-trained player's TL skill card is the
+    last exact reading before they resurface in this pool. A "+N earlier" with a dropping
+    ask is a motivated seller.</div></div>`;
 }
 
 /* ── home ── */
@@ -232,6 +251,8 @@ async function home(){
     `Season ${B.season ?? '?'} · generated ${B.generated}`;
   document.getElementById('footer').textContent =
     `Updated ${B.generated} · encrypted scouting data · BuzzerBeater play-by-play archive`;
+  const tm = document.getElementById('tlmore');
+  if (tm) tm.onclick = () => { state.tlAll = !state.tlAll; home(); };
 }
 
 /* ── box score page ── */
@@ -575,7 +596,7 @@ async function playerPage(tid, pn){
 }
 
 /* ── router + pool switcher ── */
-const state = { pool: 'u21', season: null };
+const state = { pool: 'u21', season: null, tlAll: false };
 async function route(){
   const h = location.hash.replace(/^#\/?/, '').split('/');
   document.getElementById('rail').innerHTML = '';
