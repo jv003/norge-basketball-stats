@@ -209,9 +209,21 @@ async function home(){
   const B = await bundle(state.pool);
   const cd = B.club;
   const sched = cd.schedule.filter(g => g.us != null);
+  // upcoming fixtures (fetched live at export time) — the S73+ slate;
+  // opponents link once we hold game data for them
+  const fx = cd.fixtures || [];
+  const fxCard = !fx.length ? '' :
+    `<div class="card"><h2>Upcoming <span class="n">S${B.season ?? '?'} fixtures ·
+      fetched ${esc(B.generated)}</span></h2>
+    <table><thead><tr><th>Date</th><th>Type</th><th>Opponent</th><th>H/A</th></tr></thead><tbody>` +
+    fx.map(f => `<tr><td>${esc(f[0])}</td><td>${esc((f[4] || '').replace('nt.',''))}</td>
+      <td>${B.docs[String(f[1])] ? tlink(f[1], f[2]) : esc(f[2])}</td>
+      <td>${esc(f[3])}</td></tr>`).join('') +
+    `</tbody></table><div class="note">Opponent names become links once their game data
+    is in the archive — full scouting pages build up as the season plays out.</div></div>`;
   document.getElementById('rail').innerHTML =
     `<div class="card"><h2>Results</h2>` + miniSched(sched, cd.team_id) + '</div>';
-  document.getElementById('main').innerHTML =
+  document.getElementById('main').innerHTML = fxCard +
     `<div class="card"><h2>${esc(cd.name)} schedule <span class="n">competitive games ·
       click an opponent</span></h2>` + schedTable(sched.slice().reverse(), cd.team_id) + '</div>' +
     tlCard(B.tl);
