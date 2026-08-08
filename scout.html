@@ -146,6 +146,7 @@ async function team(tid){
   return d;
 }
 const tlink = (tid, name) => `<a class="t" href="#/team/${tid}">${esc(name)}</a>`;
+const fxlink = f => f[1] ? tlink(f[1], f[2]) : esc(f[2]);   // team() falls back across pools
 const RLAB = ['OS','IS','OD','ID','RB','Flow'];
 const glink = (g, self) =>
   `<a class="t" href="#/game/${g.mid}/${self}/${g.opp}">${g.us}–${g.them}</a>`;
@@ -375,6 +376,30 @@ async function teamPage(tid){
     ];
     pnote = `<div class="note">Percentiled within the pool, team-game gated (3+ team games,
       0.8+ zone contests/team game). Dash = didn't qualify or metric not computed.</div>`;
+  } else if (state.pview === 'skills'){
+    // most recent CONFIRMED skills per player — TL card first (exact,
+    // newest), else captured public sheet; date + source shown
+    const SKC = ['JS','JR','OD','HA','DR','PA','IS','ID','RE','SB','ST','FT','EX'];
+    const skOf = pn => {
+      const P = T.players[pn] || {};
+      if (P.tl && P.tl.skills && P.tl.skills.length)
+        return {m: Object.fromEntries(P.tl.skills), d: P.tl.date, src: 'TL'};
+      const sh = P.sheet;
+      if (sh && sh.skills) return {m: sh.skills, d: sh.skills_date, src: 'sheet'};
+      return null;
+    };
+    cols = [
+      ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
+      ['Confirmed', (pn) => { const s = skOf(pn);
+        return s ? {v: s.d || '', h: `${esc(s.d || '?')} <span class="muted">${s.src}</span>`}
+                 : {v: '', h: '—'}; }],
+      ...SKC.map(k => [k, (pn) => { const s = skOf(pn); const v = s && s.m ? s.m[k] : null;
+        return {v: v ?? -1, h: v ?? '—'}; }]),
+    ];
+    pnote = `<div class="note">Most recent CONFIRMED skills per player — from their last
+      transfer-list card or a captured public sheet. Confirmed = the date that reading was
+      taken; training since then is not reflected. Dash = never sighted, and the reader
+      should assume nothing.</div>`;
   } else if (state.pview === 'adv'){
     const pmin = P => (pn, s) => {
       const m = s.pos?.[P], v = m && s.gp ? m / s.gp : null;
@@ -421,6 +446,7 @@ async function teamPage(tid){
     ];
   }
   let ptitle = {grades: 'letter grades · offense + defense combined',
+    skills: 'last confirmed skills · TL cards + captured sheets',
     adv: 'advanced · efficiency + minutes by position'}[state.pview] || 'per-game · click for history';
   if (prows.some(([pn]) => T.players[pn]?.tl))
     ptitle += ' · <span class="tl-dot">●</span> = TL skill card on file';
@@ -439,12 +465,21 @@ async function teamPage(tid){
     rows.map(r => `<tr>${r.map(c => `<td>${c.h}</td>`).join('')}</tr>`).join('') +
     '</tbody></table>' + pnote;
   const pseg = `<div class="seg" style="margin-bottom:8px">
-    ${[['stats','Stats'],['adv','Advanced'],['grades','Grades']].map(([k,l]) =>
+    ${[['stats','Stats'],['adv','Advanced'],['grades','Grades'],['skills','Skills']].map(([k,l]) =>
       `<button data-pv="${k}" class="${(state.pview||'stats')===k?'on':''}">${l}</button>`).join('')}
   </div>`;
 
-  document.getElementById('rail').innerHTML =
-    `<div class="card"><h2>Schedule <span class="n">S${cur}</span></h2>` +
+  // this team's own upcoming slate (fetched at generation) — keeps the
+  // rail current when the new season hasn't produced games yet
+  const tfx = (T.fixtures || []).slice()
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const upCard = !tfx.length ? '' :
+    `<div class="card"><h2>Upcoming</h2><table><tbody>` +
+    tfx.slice(0, 12).map(f => `<tr><td class="muted">${esc(String(f[0]).slice(5))}</td>
+      <td style="text-align:left">${fxlink(f)}</td><td>${esc(f[3])}</td></tr>`).join('') +
+    '</tbody></table></div>';
+  document.getElementById('rail').innerHTML = upCard +
+    `<div class="card"><h2>Results <span class="n">S${cur}</span></h2>` +
     miniSched(T.schedule.filter(g => g.season === cur && g.us != null), tid) + '</div>';
   document.getElementById('main').innerHTML = `
     <div class="tiles">
