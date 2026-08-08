@@ -230,8 +230,12 @@ async function home(){
   const cd = B.club;
   const sched = cd.schedule.filter(g => g.us != null);
   // upcoming fixtures (fetched live at export time) — the S73+ slate;
-  // opponents link once we hold game data for them
-  const fx = (cd.fixtures || []).slice()
+  // opponents link once we hold game data for them. Club field first;
+  // fall back to the club's own team doc (its per-team fetch is retried
+  // later in the run, so it can succeed when the club-level one didn't)
+  const fxSrc = (cd.fixtures && cd.fixtures.length ? cd.fixtures
+    : (B.docs[String(cd.team_id)] || {}).fixtures) || [];
+  const fx = fxSrc.slice()
     .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   const fxCard = !fx.length ? '' :
     `<div class="card"><h2>Upcoming <span class="n">S${B.season ?? '?'} fixtures ·
