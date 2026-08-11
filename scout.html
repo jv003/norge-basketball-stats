@@ -246,8 +246,13 @@ async function home(){
       <td>${esc(f[3])}</td></tr>`).join('') +
     `</tbody></table><div class="note">Opponent names become links once their game data
     is in the archive — full scouting pages build up as the season plays out.</div></div>`;
+  // rail tracks the REPORT season only — honest empty state pre-opener
+  const railGames = sched.filter(g => g.season === B.season);
   document.getElementById('rail').innerHTML =
-    `<div class="card"><h2>Results</h2>` + miniSched(sched, cd.team_id) + '</div>';
+    `<div class="card"><h2>Results <span class="n">S${B.season ?? '?'}</span></h2>` +
+    (railGames.length ? miniSched(railGames, cd.team_id)
+      : `<div class="note">No S${B.season} games played yet — see Upcoming.</div>`) +
+    '</div>';
   document.getElementById('main').innerHTML = fxCard +
     `<div class="card"><h2>${esc(cd.name)} schedule <span class="n">competitive games ·
       click an opponent</span></h2>` + schedTable(sched.slice().reverse(), cd.team_id) + '</div>' +
