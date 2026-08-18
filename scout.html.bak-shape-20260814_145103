@@ -409,52 +409,6 @@ async function teamPage(tid){
       transfer-list card or a captured public sheet. Confirmed = the date that reading was
       taken; training since then is not reflected. Dash = never sighted, and the reader
       should assume nothing.</div>`;
-  } else if (state.pview === 'shape'){
-    // shape/training decomposer (compute_shape_training.py): weekly club
-    // DMI vs the 8/7 GS-7.00 anchor (or est-base series when unanchored).
-    // Row = latest week. Rows: [week, gs, src, ratio, resid, streak, rise,
-    // verdict, est_base].
-    const shOf = pn => { const s = T.players[pn]?.sheet?.shape;
-      return s && s.length ? s[s.length - 1] : null; };
-    const ageOf = pn => { const sh = T.players[pn]?.sheet;
-      return sh?.sheets?.length ? sh.sheets[sh.sheets.length - 1][1] : null; };
-    const bandPct = L => L && L[4] != null ? 100*(Math.exp(L[4]) - 1) : null;
-    cols = [
-      ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
-      ['Age', (pn) => num(ageOf(pn), 0)],
-      ['GS', (pn) => { const L = shOf(pn);
-        return L && L[1] != null ? {v: L[1], h: `${L[1]}${
-          L[2] === 'band' ? '<span class="muted" title="inferred from DMI band, not observed">?</span>' : ''}`}
-          : {v: -1, h: '—'}; }],
-      ['DMI ×', (pn) => { const L = shOf(pn);
-        return L && L[3] != null ? num(L[3], 2) : {v: -1e12, h: '—'}; }],
-      ['vs band', (pn) => { const p = bandPct(shOf(pn));
-        return p == null ? {v: -1e12, h: '—'} :
-          {v: p, h: `<span style="color:${p > 10 ? 'var(--win)' : p < -10 ?
-            'var(--accent-ink)' : 'inherit'}">${p > 0 ? '+' : ''}${p.toFixed(0)}%</span>`}; }],
-      ['Est base', (pn) => {         // latest GS-9 precision read (±0.1%)
-        const s = T.players[pn]?.sheet?.shape || [];
-        for (let i = s.length - 1; i >= 0; i--){
-          const L = s[i];
-          if (L[1] === 9 && L[2] === 'obs' && L[8] != null)
-            return {v: L[8], h: `<span title="GS9 read ${esc(L[0])} — implied baseline DMI, near-exact">${
-              (+L[8]).toLocaleString()}</span>`};
-        }
-        return {v: -1e12, h: '—'}; }],
-      ['Training?', (pn) => { const L = shOf(pn); const v = L ? L[7] : null;
-        return {v: v || '', h: !v || v === '—' ? '—' :
-          `<span style="font-weight:700;color:${v === 'training?' ? 'var(--win)' :
-            v === 'decay?' ? 'var(--accent-ink)' : 'var(--ink-3)'}">${esc(v)}</span>`}; }],
-    ];
-    pnote = `<div class="note">Weekly CLUB DMI decomposed against game shape (both captured
-      from public pages every Friday). DMI × = live DMI over the player's 8/7 anchor (S73
-      reset: GS 7.00 = pure skill baseline); vs band = distance from that week's UNTRAINED
-      median at his observed GS (calibrated weekly on shape-only cohorts). Est base =
-      implied baseline DMI from his most recent observed GS-9 week (÷3.54, near-exact) —
-      works without an anchor, so it covers rookies and NT-watch players. <b>training?</b>
-      = above the untrained band max 3 straight Fridays or a steady rise; <b>decay?</b> =
-      the mirror. n/a = not enough weekly readings yet. Dash in every column = player not
-      on the weekly watch (no club sightings). DRAFT rules — series on player pages.</div>`;
   } else if (state.pview === 'adv'){
     const pmin = P => (pn, s) => {
       const m = s.pos?.[P], v = m && s.gp ? m / s.gp : null;
@@ -502,8 +456,7 @@ async function teamPage(tid){
   }
   let ptitle = {grades: 'letter grades · offense + defense combined',
     skills: 'last confirmed skills · TL cards + captured sheets',
-    adv: 'advanced · efficiency + minutes by position',
-    shape: 'shape/training decomposer · club DMI vs GS'}[state.pview] || 'per-game · click for history';
+    adv: 'advanced · efficiency + minutes by position'}[state.pview] || 'per-game · click for history';
   if (prows.some(([pn]) => T.players[pn]?.tl))
     ptitle += ' · <span class="tl-dot">●</span> = TL skill card on file';
   let rows = prows.map(([pn,, s]) => cols.map(c => c[1](pn, s)));
@@ -520,15 +473,8 @@ async function teamPage(tid){
     `</tr></thead><tbody>` +
     rows.map(r => `<tr>${r.map(c => `<td>${c.h}</td>`).join('')}</tr>`).join('') +
     '</tbody></table>' + pnote;
-  // Shape tab appears only once the bundle actually carries shape data —
-  // the weekly watch starts after the S73 NT rosters are set (8/18), so
-  // this self-unleashes on the first publish that ships real series
-  // (Patrick 8/14: hold the Norge-manager reveal until the data exists).
-  const hasShape = Object.values(T.players).some(p => p.sheet?.shape?.length);
-  const pviews = [['stats','Stats'],['adv','Advanced'],['grades','Grades'],['skills','Skills'],
-                  ...(hasShape ? [['shape','Shape']] : [])];
   const pseg = `<div class="seg" style="margin-bottom:8px">
-    ${pviews.map(([k,l]) =>
+    ${[['stats','Stats'],['adv','Advanced'],['grades','Grades'],['skills','Skills']].map(([k,l]) =>
       `<button data-pv="${k}" class="${(state.pview||'stats')===k?'on':''}">${l}</button>`).join('')}
   </div>`;
 
@@ -670,37 +616,13 @@ async function playerPage(tid, pn){
       <div class="skills">${Object.entries(sh.skills).map(([k,v]) =>
         `<div class="skill"><div class="k">${k}</div><div class="v">${v??'—'}</div></div>`).join('')}</div>`
       : `<div class="note">No skill levels known — public sheet only (salary/age/DMI).</div>`;
-    const shMap = {};
-    (sh.shape || []).forEach(L => { shMap[L[0]] = L; });
-    const fmtPct = r => r == null ? '—' :
-      (p => `${p > 0 ? '+' : ''}${p.toFixed(0)}%`)(100*(Math.exp(r) - 1));
-    const trail = sh.sheets.slice(-10).map(([d,a,s,dm]) => {
-      const L = shMap[d];
-      return `<tr><td>${d}</td><td>${a}</td><td>${s?.toLocaleString?.()??s}</td>
-       <td>${dm?.toLocaleString?.()??dm}</td>
-       <td>${L && L[1] != null ? L[1] + (L[2] === 'band' ? '?' : '') : '—'}</td>
-       <td>${L && L[3] != null ? (+L[3]).toFixed(2) : '—'}</td>
-       <td>${L ? fmtPct(L[4]) : '—'}</td></tr>`; }).join('');
-    const lastSh = sh.shape && sh.shape.length ? sh.shape[sh.shape.length - 1] : null;
-    const vline = lastSh && lastSh[7] && lastSh[7] !== '—' && lastSh[7] !== 'n/a' ?
-      ` Current verdict: <b>${esc(lastSh[7])}</b>.` : '';
-    let bline = '';
-    for (const L of (sh.shape || []).slice().reverse()){
-      if (L[1] === 9 && L[2] === 'obs' && L[8] != null){
-        bline = ` <b>Estimated baseline DMI ${(+L[8]).toLocaleString()}</b>
-          (GS9 precision read, ${esc(L[0])}${L[4] != null ?
-          `, ${fmtPct(L[4])} vs 8/7 anchor = training since reset` : ''}).`;
-        break;
-      }
-    }
-    evid = sk + `<table><thead><tr><th>Sheet</th><th>Age</th><th>Salary</th><th>DMI</th>
-      <th>GS</th><th>DMI ×</th><th>vs band</th></tr></thead>
+    const trail = sh.sheets.slice(-10).map(([d,a,s,dm]) =>
+      `<tr><td>${d}</td><td>${a}</td><td>${s?.toLocaleString?.()??s}</td>
+       <td>${dm?.toLocaleString?.()??dm}</td></tr>`).join('');
+    evid = sk + `<table><thead><tr><th>Sheet</th><th>Age</th><th>Salary</th><th>DMI</th></tr></thead>
       <tbody>${trail}</tbody></table>
-      <div class="note">Salary steps at rollover = last season's skill movement. DMI × =
-      club DMI over the 8/7 GS-7.00 anchor; vs band = residual against that week's
-      untrained median at his observed GS (GS? = inferred). Shape sublevels mean-revert,
-      training compounds — read the trend, not one week.${bline}${vline}
-      Evidence only — reader concludes.</div>`;
+      <div class="note">Salary steps at rollover = last season's skill movement; weekly DMI ≈ GS
+      (reliable young, cautious on veterans). Evidence only — reader concludes.</div>`;
   }
   document.getElementById('rail').innerHTML =
     `<div class="card"><h2>${esc(T.name)}</h2><div class="note">${tlink(tid, '← team page')}</div></div>`;
