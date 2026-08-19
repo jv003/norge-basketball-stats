@@ -353,6 +353,8 @@ async function teamPage(tid){
       `<tr><td>${esc(r[1])}</td>${r.slice(2,8).map(v=>`<td>${f1(v)}</td>`).join('')}
        <td>${r[8]}</td></tr>`).join('') + '</tbody></table>';
 
+  // sticky order belongs to one squad's roster -- drop it on team change
+  if (state.pteam !== tid){ state.porder = null; state.psort = null; state.pteam = tid; }
   const prows = Object.entries(T.players)
     .map(([pn, p]) => [pn, p, p.seasons[String(cur)]])
     .filter(([,,s]) => s && s.gp > 0)
@@ -506,14 +508,30 @@ async function teamPage(tid){
     shape: 'shape/training decomposer · club DMI vs GS'}[state.pview] || 'per-game · click for history';
   if (prows.some(([pn]) => T.players[pn]?.tl))
     ptitle += ' · <span class="tl-dot">●</span> = TL skill card on file';
-  let rows = prows.map(([pn,, s]) => cols.map(c => c[1](pn, s)));
+  // ── row order is STICKY ACROSS TABS ──────────────────────────────────
+  // Each view has its own column set, so a saved column INDEX points at a
+  // different stat after a tab switch. What carries over cleanly is the
+  // resulting player ORDER: keep it in state.porder and re-apply on every
+  // render. Sort by a stat in Stats, hit Skills, and the same player is
+  // still on the same row -- which is how a coach reads a board.
+  let pr = prows.slice();
+  if (state.porder && state.porder.length){
+    const rank = new Map(state.porder.map((pn, i) => [pn, i]));
+    // players absent from the saved order (season change, call-up) fall to
+    // the bottom rather than scrambling the rest
+    pr.sort((a, b) => (rank.has(a[0]) ? rank.get(a[0]) : 1e9) -
+                      (rank.has(b[0]) ? rank.get(b[0]) : 1e9));
+  }
   const sc = state.psort, sd = state.pdir || -1;
   if (sc != null && cols[sc]){
-    rows.sort((a, b) => {
-      const x = a[sc].v, y = b[sc].v;
+    const kv = e => cols[sc][1](e[0], e[2]).v;
+    pr.sort((a, b) => {
+      const x = kv(a), y = kv(b);
       return sd * (typeof x === 'string' ? x.localeCompare(y) : x - y);
     });
   }
+  state.porder = pr.map(e => e[0]);
+  const rows = pr.map(([pn,, s]) => cols.map(c => c[1](pn, s)));
   const proster = `<table><thead><tr>` +
     cols.map((c, i) => `<th data-pc="${i}" style="cursor:pointer">${c[0]}${
       i === sc ? (sd < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('') +
@@ -596,9 +614,14 @@ async function teamPage(tid){
     <div class="card"><h2>Players <span class="n">S${cur} ${ptitle}</span></h2>
       ${pseg}${proster}</div>`;
   document.querySelectorAll('.seg button[data-se]').forEach(b =>
-    b.onclick = () => { state.season = +b.dataset.se; teamPage(tid); });
+    b.onclick = () => {
+      // a different season is a different roster; sticky order is for TABS
+      state.season = +b.dataset.se; state.porder = null; teamPage(tid); });
   document.querySelectorAll('.seg button[data-pv]').forEach(b =>
-    b.onclick = () => { state.pview = b.dataset.pv; state.psort = null; teamPage(tid); });
+    b.onclick = () => {
+      // psort indexes THIS view's columns and cannot survive the switch --
+      // state.porder does, and that is what keeps the rows put.
+      state.pview = b.dataset.pv; state.psort = null; teamPage(tid); });
   document.querySelectorAll('th[data-pc]').forEach(th =>
     th.onclick = () => {
       const i = +th.dataset.pc;
