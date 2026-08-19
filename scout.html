@@ -17,7 +17,12 @@
   --ink-2:rgba(0,32,91,0.6); --ink-3:rgba(0,32,91,0.4);
   --accent:#EF2B2D; --accent-ink:#c21e20;
   --win:#3d7a3d; --loss:#EF2B2D; --edge:#3d7a3d; --dis:#c21e20;
+  /* age of a confirmed skill reading: amber past half a season, red past a
+     full one. A card is a photograph, not a live feed. */
+  --stale7:#B45309; --stale14:#c21e20;
 }
+.st7{color:var(--stale7);font-weight:600}
+.st14{color:var(--stale14);font-weight:600}
 .layout{display:grid;grid-template-columns:250px 1fr;gap:16px;margin-top:14px}
 @media (max-width:900px){.layout{grid-template-columns:1fr}}
 .rail{font-size:12.5px}
@@ -399,18 +404,36 @@ async function teamPage(tid){
       if (sh && sh.skills) return {m: sh.skills, d: sh.skills_date, src: 'sheet'};
       return null;
     };
+    // HOW OLD IS THE READING (Patrick 8/19). A TL card is a photograph, and
+    // the player has kept training since it was taken. Half a season (7 wk /
+    // 49 d) is enough for a skill to move; a full season (14 wk / 98 d) can
+    // move several, so a coach must not read a year-old card as current.
+    // Measured against the bundle's generated date so the page is
+    // deterministic, falling back to today if that is missing.
+    const REF = (typeof B === 'object' && B && B.generated)
+      ? new Date(B.generated + 'T00:00:00') : new Date();
+    const staleCls = d => {
+      if (!d) return '';
+      const days = Math.floor((REF - new Date(d + 'T00:00:00')) / 86400000);
+      return days >= 98 ? 'st14' : days >= 49 ? 'st7' : '';
+    };
+    const wrap = (cls, txt) => cls ? `<span class="${cls}">${txt}</span>` : `${txt}`;
     cols = [
       ['Player', (pn) => ({v: pn.toLowerCase(), h: plink(pn)})],
       ['Confirmed', (pn) => { const s = skOf(pn);
-        return s ? {v: s.d || '', h: `${esc(s.d || '?')} <span class="muted">${s.src}</span>`}
-                 : {v: '', h: '—'}; }],
+        if (!s) return {v: '', h: '—'};
+        return {v: s.d || '', h: `${wrap(staleCls(s.d), esc(s.d || '?'))} `
+                                 + `<span class="muted">${s.src}</span>`}; }],
       ...SKC.map(k => [k, (pn) => { const s = skOf(pn); const v = s && s.m ? s.m[k] : null;
-        return {v: v ?? -1, h: v ?? '—'}; }]),
+        return v == null ? {v: -1, h: '—'}
+                         : {v: v, h: wrap(staleCls(s.d), v)}; }]),
     ];
     pnote = `<div class="note">Most recent CONFIRMED skills per player — from their last
       transfer-list card or a captured public sheet. Confirmed = the date that reading was
       taken; training since then is not reflected. Dash = never sighted, and the reader
-      should assume nothing.</div>`;
+      should assume nothing. <span class="st7">Amber</span> = reading is over half a
+      season old (7+ weeks); <span class="st14">red</span> = over a full season (14+
+      weeks) and should be treated as a starting point, not a fact.</div>`;
   } else if (state.pview === 'shape'){
     // shape/training decomposer (compute_shape_training.py): weekly club
     // DMI vs the 8/7 GS-7.00 anchor (or est-base series when unanchored).
@@ -434,6 +457,23 @@ async function teamPage(tid){
         return p == null ? {v: -1e12, h: '—'} :
           {v: p, h: `<span style="color:${p > 10 ? 'var(--win)' : p < -10 ?
             'var(--accent-ink)' : 'inherit'}">${p > 0 ? '+' : ''}${p.toFixed(0)}%</span>`}; }],
+      ['Anchor', (pn) => {           // 8/7 GS-7.00 reading = season-opening base
+        const L = shOf(pn);
+        return L && L[9] != null
+          ? {v: L[9], h: `<span title="8/7 anchor: DMI at GS 7.00, pure skill mass at the S73 reset">${(+L[9]).toLocaleString()}</span>`}
+          : {v: -1e12, h: '—'}; }],
+      ['Growth', (pn) => {           // est base vs anchor, when both exist
+        const s = T.players[pn]?.sheet?.shape || [];
+        const L = s.length ? s[s.length - 1] : null;
+        let eb = null;
+        for (let i = s.length - 1; i >= 0; i--){
+          if (s[i][1] === 9 && s[i][2] === 'obs' && s[i][8] != null){ eb = s[i][8]; break; }
+        }
+        if (eb == null || !L || L[9] == null) return {v: -1e12, h: '—'};
+        const g = 100 * (eb / L[9] - 1);
+        return {v: g, h: `<span style="color:${g > 2 ? 'var(--win)' : g < -2 ?
+          'var(--accent-ink)' : 'inherit'}" title="est base vs 8/7 anchor — skill mass added since the reset">${
+          g > 0 ? '+' : ''}${g.toFixed(1)}%</span>`}; }],
       ['Est base', (pn) => {         // latest GS-9 precision read (±0.1%)
         const s = T.players[pn]?.sheet?.shape || [];
         for (let i = s.length - 1; i >= 0; i--){
