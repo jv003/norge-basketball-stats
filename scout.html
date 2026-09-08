@@ -483,19 +483,34 @@ async function teamPage(tid){
               (+L[8]).toLocaleString()}</span>`};
         }
         return {v: -1e12, h: '—'}; }],
-      ['Training?', (pn) => { const L = shOf(pn); const v = L ? L[7] : null;
-        return {v: v || '', h: !v || v === '—' ? '—' :
-          `<span style="font-weight:700;color:${v === 'training?' ? 'var(--win)' :
-            v === 'decay?' ? 'var(--accent-ink)' : 'var(--ink-3)'}">${esc(v)}</span>`}; }],
+      ['GS→', (pn) => {  // implied GS (Patrick 9/7): what the DMI says
+        const L = shOf(pn);      // shape SHOULD be, vs the best baseline
+        return L && L[10] != null
+          ? {v: L[10], h: `<span title="DMIx read against the best skill baseline (8/7 anchor, else the last tight-band est base) — the GS this DMI implies">${L[10]}</span>`}
+          : {v: -1, h: '—'}; }],
+      ['48s', (pn) => {          // full-48 games since the anchor (any type)
+        const L = shOf(pn);
+        return L && L[11] != null ? num(L[11], 0) : {v: -1, h: '—'}; }],
+      ['Training', (pn) => { const L = shOf(pn); const v = L ? L[7] : null;
+        if (!v || v === '—') return {v: '', h: '—'};
+        if (v === 'n/a') return {v: v, h: `<span style="color:var(--ink-3)">n/a</span>`};
+        if (v === 'decay?') return {v: v,
+          h: `<span style="font-weight:700;color:var(--loss)">decay?</span>`};
+        // v2 (Patrick 9/7): color follows the LABEL. Yes = confirmed
+        // (+20% precise-read rise in 10 wks, band-max streak, or a
+        // consistent rise + 2 full-48s) — dark; Likely = trending — light
+        const dark = v === 'Yes';
+        return {v: (dark ? '2' : '1') + v, h: `<span style="font-weight:700;color:${
+          dark ? '#0b6b0b' : '#7ab06f'}" title="${dark
+            ? 'Confirmed: +20% base rise inside 10 weeks, a band-max streak, or a consistent rise backed by full-48 games'
+            : 'Trending up — not yet confirmed'}">${esc(v)}</span>`}; }],
     ];
     pnote = `<div class="note">Weekly CLUB DMI decomposed against game shape (both captured
       from public pages every Friday). DMI × = live DMI over the player's 8/7 anchor (S73
       reset: GS 7.00 = pure skill baseline); vs band = distance from that week's UNTRAINED
       median at his observed GS (calibrated weekly on shape-only cohorts). Est base =
       implied baseline DMI from his most recent observed GS-9 week (÷3.54, near-exact) —
-      works without an anchor, so it covers rookies and NT-watch players. <b>training?</b>
-      = above the untrained band max 3 straight Fridays or a steady rise; <b>decay?</b> =
-      the mirror. n/a = not enough weekly readings yet. Dash in every column = player not
+      works without an anchor, so it covers rookies and NT-watch players. <b>Yes</b> (dark green) = CONFIRMED training: est base up 20%+ inside 10 weeks on precise reads (anchor / tight-band weeks — extreme DMI growth needs no minutes evidence), or above the untrained band MAX 3 straight Fridays, or a zero-wobble rise backed by 2+ full-48 games (48s column); <b>Likely</b> (light green) = trending up, not yet confirmed; <b>decay?</b> = persistently below the untrained p10. GS→ = the GS the DMI implies vs the best baseline (anchor, else last tight-band est base) — a player whose GS→ sits above his listed GS is carrying more DMI than his shape explains. n/a = not enough weekly readings yet. Dash in every column = player not
       on the weekly watch (no club sightings). DRAFT rules — series on player pages.</div>`;
   } else if (state.pview === 'adv'){
     const pmin = P => (pn, s) => {
@@ -746,7 +761,10 @@ async function playerPage(tid, pn){
        <td>${L ? fmtPct(L[4]) : '—'}</td></tr>`; }).join('');
     const lastSh = sh.shape && sh.shape.length ? sh.shape[sh.shape.length - 1] : null;
     const vline = lastSh && lastSh[7] && lastSh[7] !== '—' && lastSh[7] !== 'n/a' ?
-      ` Current verdict: <b>${esc(lastSh[7])}</b>.` : '';
+      ` Current verdict: <b>${esc(lastSh[7])}</b>`
+      + (lastSh[10] != null ? ` · DMI implies GS ≈ <b>${lastSh[10]}</b>` : '')
+      + (lastSh[11] != null ? ` · full-48 games since anchor: <b>${lastSh[11]}</b>` : '')
+      + '.' : '';
     let bline = '';
     for (const L of (sh.shape || []).slice().reverse()){
       if (L[1] === 9 && L[2] === 'obs' && L[8] != null){
